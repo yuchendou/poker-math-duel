@@ -36,31 +36,6 @@
     return cells.map((p) => ({ r: p.r - minR, c: p.c - minC }));
   }
 
-  function rotateCells(cells) {
-    if (!cells.length) return [];
-    const maxR = Math.max(...cells.map((p) => p.r));
-    return normalizeCells(cells.map((p) => ({ r: p.c, c: maxR - p.r })));
-  }
-
-  function cellsKey(cells) {
-    return cells.map((p) => `${p.r},${p.c}`).sort().join('|');
-  }
-
-  function allRotations(cells) {
-    const rots = [];
-    const seen = new Set();
-    let cur = cells;
-    for (let i = 0; i < 4; i++) {
-      const key = cellsKey(cur);
-      if (!seen.has(key) && cur.length) {
-        seen.add(key);
-        rots.push(cur.map((p) => ({ ...p })));
-      }
-      cur = rotateCells(cur);
-    }
-    return rots;
-  }
-
   function clearLines(b) {
     const next = b.map((row) => [...row]);
     const fullRows = [];
@@ -117,23 +92,21 @@
     }
 
     const pieceIdx = order[depth];
-    const rotations = allRotations(pieceCellsList[pieceIdx]);
-    for (const rot of rotations) {
-      for (let r = 0; r < SIZE; r++) {
-        for (let c = 0; c < SIZE; c++) {
-          if (!canPlace(currentBoard, rot, r, c)) continue;
-          const nextBoard = placeCells(currentBoard, rot, r, c);
-          steps.push({
-            pieceIdx,
-            cells: rot.map((p) => ({ ...p })),
-            row: r,
-            col: c,
-            boardAfter: nextBoard.map((row) => [...row]),
-          });
-          dfs(order, depth + 1, nextBoard, steps, found, pieceCellsList);
-          steps.pop();
-          if (found.length >= MAX_SOLUTIONS) return;
-        }
+    const shape = pieceCellsList[pieceIdx];
+    for (let r = 0; r < SIZE; r++) {
+      for (let c = 0; c < SIZE; c++) {
+        if (!canPlace(currentBoard, shape, r, c)) continue;
+        const nextBoard = placeCells(currentBoard, shape, r, c);
+        steps.push({
+          pieceIdx,
+          cells: shape.map((p) => ({ ...p })),
+          row: r,
+          col: c,
+          boardAfter: nextBoard.map((row) => [...row]),
+        });
+        dfs(order, depth + 1, nextBoard, steps, found, pieceCellsList);
+        steps.pop();
+        if (found.length >= MAX_SOLUTIONS) return;
       }
     }
   }

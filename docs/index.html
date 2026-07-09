@@ -47,7 +47,7 @@
         <button class="game-card" data-game="blockblast">
           <span class="game-card-icon">🧩</span>
           <span class="game-card-name">Block Blast 解題</span>
-          <span class="game-card-desc">設定 8×8 棋盤與三個方塊，自動找解法</span>
+          <span class="game-card-desc">設定棋盤與方塊形狀，找放置解法</span>
         </button>
       </div>
     </section>
@@ -161,7 +161,7 @@
     <section id="blockblastGame" class="panel hidden bb-panel">
       <button id="btnBackFromBlockblast" class="btn btn-text">← 換遊戲</button>
       <h2 class="bb-title">🧩 Block Blast 解題</h2>
-      <p class="bb-intro">點格子切換顏色。深色 = 已有方塊，淺色 = 空格。畫好三個待放圖形後按求解。</p>
+      <p class="bb-intro">點格子切換顏色。深色 = 已有方塊，淺色 = 空格。<strong>下方三個圖形不能旋轉或翻轉</strong>，請照遊戲裡看到的方向畫好再求解。</p>
 
       <div class="bb-layout">
         <div class="bb-section">
@@ -174,7 +174,7 @@
         </div>
 
         <div class="bb-section">
-          <h3 class="bb-section-title">三個待放圖形（點格子畫形狀）</h3>
+          <h3 class="bb-section-title">三個待放圖形（固定方向，不可旋轉）</h3>
           <div class="bb-pieces-row">
             <div class="bb-piece-wrap" data-piece="0">
               <span class="bb-piece-label" style="color:#5b9bd5">圖形 1</span>
