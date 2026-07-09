@@ -15,7 +15,7 @@
   <main class="app">
     <header class="header">
       <h1>🃏 撲克數學對戰</h1>
-      <p class="subtitle">翻四張牌，用加減乘除湊出目標數字！</p>
+      <p class="subtitle">翻四張牌，用整數加減乘除湊出目標數字！</p>
     </header>
 
     <div id="setupBanner" class="setup-banner hidden">
@@ -82,18 +82,17 @@
 
     <!-- 遊戲中 -->
     <section id="game" class="panel hidden">
-      <div class="scoreboard">
-        <div id="score1" class="score-item">玩家 1: 0</div>
+      <div class="target-bar">
         <div class="target-display">
           目標數字：<strong id="targetNumber">?</strong>
         </div>
-        <div id="score2" class="score-item">玩家 2: 0</div>
+        <p class="target-hint">只用 1～10 的牌 · 答案保證是整數</p>
       </div>
 
       <div class="cards-row" id="cardsRow"></div>
 
       <div class="answer-area">
-        <p class="hint">用四張牌的數字各一次，輸入算式（例如 <code>(11-3)*(8/4)</code>）</p>
+        <p class="hint">用四張牌的數字各一次，輸入算式（例如 <code>(8-2)*(4-1)</code> 或 <code>(6+4)+(10-2)</code>）</p>
         <div class="answer-row">
           <input id="expression" type="text" placeholder="輸入你的算式..." />
           <button id="btnSubmit" class="btn btn-primary">送出答案</button>

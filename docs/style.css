@@ -325,22 +325,19 @@ input[type='text']:focus {
   margin-top: 0.75rem;
 }
 
-.scoreboard {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.target-bar {
+  text-align: center;
   margin-bottom: 1.5rem;
-  gap: 0.5rem;
 }
 
-.score-item {
-  font-size: 0.9rem;
+.target-hint {
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
   color: var(--muted);
 }
 
 .target-display {
   font-size: 1.1rem;
-  text-align: center;
 }
 
 .target-display strong {

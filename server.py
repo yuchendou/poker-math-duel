@@ -16,9 +16,9 @@ app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "poker-math-duel")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 SUITS = ["♠", "♥", "♦", "♣"]
-RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
+RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
 RANK_VALUES = {"A": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
-               "8": 8, "9": 9, "10": 10, "J": 11, "Q": 12, "K": 13}
+               "8": 8, "9": 9, "10": 10}
 CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 rooms: dict = {}
@@ -41,14 +41,15 @@ def draw_cards():
     return deck[:4]
 
 
-def compute_all_results(nums):
+def compute_integer_results(nums):
+    """只計算全程可用整數運算（含整除）達成的目標"""
     results = set()
 
     def solve(remaining):
         if len(remaining) == 1:
             v = remaining[0]
-            if abs(v - round(v)) < 1e-9:
-                results.add(round(v))
+            if isinstance(v, int) and v > 0:
+                results.add(v)
             return
         for i in range(len(remaining)):
             for j in range(len(remaining)):
@@ -56,22 +57,37 @@ def compute_all_results(nums):
                     continue
                 rest = [remaining[k] for k in range(len(remaining)) if k not in (i, j)]
                 a, b = remaining[i], remaining[j]
-                for val in (a + b, a - b, a * b):
-                    solve(rest + [val])
-                if abs(b) > 1e-9:
-                    solve(rest + [a / b])
+                candidates = {a + b, a - b, b - a, a * b}
+                if b != 0 and a % b == 0:
+                    candidates.add(a // b)
+                if a != 0 and b % a == 0:
+                    candidates.add(b // a)
+                for val in candidates:
+                    if val > 0:
+                        solve(rest + [val])
 
-    solve(list(nums))
-    return [n for n in results if 0 < n <= 100]
+    solve([int(n) for n in nums])
+    return sorted(n for n in results if 1 <= n <= 30)
+
+
+def pick_friendly_target(targets):
+    """偏好常見、好算的整數目標"""
+    preferred = [n for n in targets if n in {12, 15, 18, 20, 24, 25, 30}]
+    pool = preferred or [n for n in targets if 6 <= n <= 24] or targets
+    return random.choice(pool)
 
 
 def generate_puzzle():
-    for _ in range(50):
+    for _ in range(80):
         cards = draw_cards()
         values = [c["value"] for c in cards]
-        possible = compute_all_results(values)
-        if possible:
-            return {"cards": cards, "target": random.choice(possible), "values": values}
+        possible = compute_integer_results(values)
+        if len(possible) >= 3:
+            return {
+                "cards": cards,
+                "target": pick_friendly_target(possible),
+                "values": values,
+            }
     return {
         "cards": [
             {"suit": "♠", "rank": "3", "value": 3, "isRed": False},
@@ -99,7 +115,11 @@ def safe_eval(expr):
         return None
     try:
         result = eval(sanitized, {"__builtins__": {}}, {})  # noqa: S307
-        return result if isinstance(result, (int, float)) and abs(result) != float("inf") else None
+        if not isinstance(result, (int, float)) or abs(result) == float("inf"):
+            return None
+        if abs(result - round(result)) > 1e-9:
+            return None
+        return int(round(result))
     except Exception:
         return None
 
@@ -111,7 +131,6 @@ def get_room_state(room):
         "isFull": len(room["players"]) == 2,
         "gameState": room["gameState"],
         "round": room["round"],
-        "scores": room["scores"],
     }
 
 
@@ -145,7 +164,6 @@ def on_create(data):
         "players": [{"id": sid, "name": name, "isHost": True}],
         "gameState": "waiting",
         "round": None,
-        "scores": {sid: 0},
     }
     rooms[code] = room
     sid_to_room[sid] = code
@@ -170,7 +188,6 @@ def on_join(data):
         return
 
     room["players"].append({"id": sid, "name": name, "isHost": False})
-    room["scores"][sid] = 0
     sid_to_room[sid] = code
     join_room(code)
     emit("room:joined", {"code": code})
@@ -231,18 +248,17 @@ def on_submit(data):
     expr = (data.get("expression") or "").strip()
     result = safe_eval(expr)
     if result is None:
-        emit("game:result", {"correct": False, "message": "算式格式不正確"})
+        emit("game:result", {"correct": False, "message": "算式不正確，且答案必須是整數（除法只能整除）"})
         return
     if not uses_each_card_once(expr, rnd["values"]):
         emit("game:result", {"correct": False, "message": "必須剛好使用四張牌的數字各一次"})
         return
 
-    correct = abs(result - rnd["target"]) < 1e-9
+    correct = result == rnd["target"]
     rnd["submissions"][sid] = {"expression": expr, "correct": correct, "result": result}
 
     if correct:
         rnd["winner"] = sid
-        room["scores"][sid] = room["scores"].get(sid, 0) + 1
         winner = next((p for p in room["players"] if p["id"] == sid), None)
         socketio.emit("game:round-won", {
             "winnerId": sid,
@@ -250,7 +266,6 @@ def on_submit(data):
             "expression": expr,
             "result": result,
             "target": rnd["target"],
-            "scores": room["scores"],
         }, room=code)
         room["gameState"] = "round-end"
     else:
@@ -274,7 +289,6 @@ def on_disconnect():
         return
 
     room["players"] = [p for p in room["players"] if p["id"] != sid]
-    room["scores"].pop(sid, None)
 
     if not room["players"]:
         rooms.pop(code, None)

@@ -82,9 +82,6 @@ function bindSocketEvents() {
       showPanel(waiting);
       updateWaitingUI(state);
     }
-    if (state.gameState === 'playing' || state.gameState === 'round-end') {
-      updateScores(state);
-    }
   });
 
   socket.on('room:both-connected', ({ message }) => {
@@ -123,21 +120,16 @@ function bindSocketEvents() {
     }
   });
 
-  socket.on('game:round-won', ({ winnerName, expression, result, target, scores }) => {
+  socket.on('game:round-won', ({ winnerName, expression, result, target }) => {
     $('expression').disabled = true;
     $('btnSubmit').disabled = true;
 
     const resultEl = $('roundResult');
     resultEl.classList.remove('hidden');
     resultEl.innerHTML = `
-      <p class="winner">🏆 ${winnerName} 搶答成功！</p>
+      <p class="winner">🎉 ${winnerName} 答對了！</p>
       <p>算式：${expression} = ${result}（目標 ${target}）</p>
     `;
-
-    if (roomState) {
-      roomState.scores = scores;
-      updateScores(roomState);
-    }
 
     if (isHost) {
       $('btnNextRound').classList.remove('hidden');
@@ -257,16 +249,6 @@ function renderCards(cards) {
     `;
     row.appendChild(el);
   });
-}
-
-function updateScores(state) {
-  const players = state.players;
-  if (players[0]) {
-    $('score1').textContent = `${players[0].name}: ${state.scores[players[0].id] || 0}`;
-  }
-  if (players[1]) {
-    $('score2').textContent = `${players[1].name}: ${state.scores[players[1].id] || 0}`;
-  }
 }
 
 $('btnStart').addEventListener('click', () => {
