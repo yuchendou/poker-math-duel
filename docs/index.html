@@ -142,7 +142,7 @@
     <!-- 幾A幾B -->
     <section id="bullsGame" class="panel hidden">
       <div class="bulls-rules">
-        <p>兩人各想一組 <strong>4 位不重複數字</strong>（0～9）出給對手猜，對手看不到你的答案。</p>
+        <p>兩人各想一組 <strong>4 位不重複數字</strong>（1～9 開頭，可用 0～9）出給對手猜，對手看不到你的答案。</p>
         <p><strong>A</strong> = 數字對且位置對　<strong>B</strong> = 數字對但位置錯</p>
         <p>例如對手題目是 <code>1234</code>，你猜 <code>1567</code> → <strong>1A0B</strong>，然後換對手猜你的題。</p>
       </div>
@@ -150,8 +150,8 @@
       <div id="bullsSetup" class="bulls-setup">
         <p id="bullsSetupStatus" class="bulls-turn-status">請輸入你要出的題目</p>
         <div class="answer-row">
-          <input id="bullsSecret" type="password" placeholder="你的 4 位數字（對手看不到）" maxlength="4" inputmode="numeric" autocomplete="off" />
-          <button id="btnBullsSecret" class="btn btn-primary">出題</button>
+          <input id="bullsSecret" type="password" placeholder="4 位數字，第一位 1～9" maxlength="4" inputmode="numeric" autocomplete="off" />
+          <button id="btnBullsSecret" type="button" class="btn btn-primary">出題</button>
         </div>
       </div>
 
@@ -160,8 +160,8 @@
       <div id="bullsPlay" class="bulls-play hidden">
         <p id="bullsTurnStatus" class="bulls-turn-status">等待開始...</p>
         <div class="answer-row">
-          <input id="bullsGuess" type="text" placeholder="猜對手的 4 位數字" maxlength="4" inputmode="numeric" />
-          <button id="btnBullsSubmit" class="btn btn-primary">送出猜測</button>
+          <input id="bullsGuess" type="text" placeholder="猜對手的數字，第一位 1～9" maxlength="4" inputmode="numeric" />
+          <button id="btnBullsSubmit" type="button" class="btn btn-primary">送出猜測</button>
         </div>
         <ul id="bullsHistory" class="bulls-history"></ul>
       </div>
@@ -238,6 +238,6 @@
   <script src="./config.js"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
   <script src="./blockblast.js"></script>
-  <script src="./app.js"></script>
+  <script src="./app.js?v=3"></script>
 </body>
 </html>

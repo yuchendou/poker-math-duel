@@ -207,10 +207,12 @@ def calc_ab(secret, guess):
     return a, b
 
 
-def validate_bulls_guess(guess):
-    if not re.fullmatch(r"\d{4}", guess):
+def validate_bulls_number(value):
+    if not re.fullmatch(r"\d{4}", value):
         return False, "請輸入 4 位數字"
-    if len(set(guess)) != 4:
+    if value[0] == "0":
+        return False, "第一位不能是 0"
+    if len(set(value)) != 4:
         return False, "4 個數字不能重複"
     return True, ""
 
@@ -460,13 +462,15 @@ def on_bulls_set_secret(data):
     code = sid_to_room.get(sid)
     room = rooms.get(code)
     if not room or room["gameType"] != "bulls" or room["gameState"] != "setup":
+        emit("game:bulls-result", {"message": "目前不是出題階段，請等房主重新開始"})
         return
     rnd = room.get("round")
     if not rnd:
+        emit("game:bulls-result", {"message": "本局尚未開始，請房主重新開始"})
         return
 
     secret = (data.get("secret") or "").strip()
-    ok, message = validate_bulls_guess(secret)
+    ok, message = validate_bulls_number(secret)
     if not ok:
         emit("game:bulls-result", {"correct": False, "message": message})
         return
@@ -509,7 +513,7 @@ def on_bulls_guess(data):
         return
 
     guess = (data.get("guess") or "").strip()
-    ok, message = validate_bulls_guess(guess)
+    ok, message = validate_bulls_number(guess)
     if not ok:
         emit("game:bulls-result", {"correct": False, "message": message})
         return

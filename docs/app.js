@@ -139,6 +139,9 @@ function bindSocketEvents() {
 
   socket.on('room:update', (state) => {
     roomState = state;
+    if (state.gameType === 'bulls' && ['setup', 'playing', 'round-end'].includes(state.gameState)) {
+      return;
+    }
     if (state.gameState === 'waiting' || state.gameState === 'round-end') {
       showPanel(panels.waiting);
       updateWaitingUI(state);
@@ -221,6 +224,7 @@ function bindSocketEvents() {
     $('bullsSetup').classList.remove('hidden');
     $('bullsSecret').value = '';
     $('bullsGuess').value = '';
+    $('btnBullsSecret').textContent = '出題';
     $('bullsFeedback').classList.add('hidden');
     renderBullsHistory([]);
     updateBullsSetupUI(submittedIds || []);
@@ -234,7 +238,10 @@ function bindSocketEvents() {
   socket.on('game:bulls-secret-ok', () => {
     bullsSecretSubmitted = true;
     $('bullsSecret').value = '';
-    $('bullsFeedback').classList.add('hidden');
+    $('btnBullsSecret').disabled = true;
+    $('bullsSecret').disabled = true;
+    showBullsFeedback('✅ 已出題！等待對手出題...', 'success');
+    updateBullsSetupUI([myId]);
   });
 
   socket.on('game:bulls-new-round', ({ currentTurnId, currentTurnName, history }) => {
@@ -252,20 +259,18 @@ function bindSocketEvents() {
 
   socket.on('game:bulls-update', ({ history, lastResult, currentTurnId, currentTurnName }) => {
     bullsCurrentTurnId = currentTurnId;
-    const fb = $('bullsFeedback');
-    fb.classList.remove('hidden', 'success', 'error');
-    fb.classList.add('success');
-    fb.textContent = `${lastResult.playerName} 猜 ${lastResult.guess} → ${lastResult.a}A${lastResult.b}B`;
+    showBullsFeedback(`${lastResult.playerName} 猜 ${lastResult.guess} → ${lastResult.a}A${lastResult.b}B`, 'success');
     renderBullsHistory(history);
     updateBullsTurnUI(currentTurnId, currentTurnName);
     if (currentTurnId === myId) $('bullsGuess').focus();
   });
 
   socket.on('game:bulls-result', ({ message }) => {
-    const fb = $('bullsFeedback');
-    fb.classList.remove('hidden', 'success', 'error');
-    fb.classList.add('error');
-    fb.textContent = message;
+    showBullsFeedback(message, 'error');
+    if (!bullsSecretSubmitted && !$('bullsSetup').classList.contains('hidden')) {
+      $('btnBullsSecret').disabled = false;
+      $('btnBullsSecret').textContent = '出題';
+    }
   });
 
   socket.on('game:bulls-won', ({ winnerName, guess, secret, opponentName, revealedSecrets, attempts, history }) => {
@@ -459,9 +464,23 @@ function renderBullsHistory(history) {
   });
 }
 
+function validateBullsNumber(value) {
+  if (!/^\d{4}$/.test(value)) return '請輸入 4 位數字';
+  if (value[0] === '0') return '第一位不能是 0';
+  if (new Set(value).size !== 4) return '4 個數字不能重複';
+  return '';
+}
+
+function showBullsFeedback(message, type = 'error') {
+  const fb = $('bullsFeedback');
+  fb.classList.remove('hidden', 'success', 'error');
+  fb.classList.add(type);
+  fb.textContent = message;
+}
+
 function updateBullsSetupUI(submittedIds) {
   const status = $('bullsSetupStatus');
-  const hasMine = submittedIds.includes(myId);
+  const hasMine = bullsSecretSubmitted || submittedIds.includes(myId);
   const waitingOpponent = hasMine && submittedIds.length < 2;
 
   $('bullsSecret').disabled = hasMine;
@@ -474,7 +493,7 @@ function updateBullsSetupUI(submittedIds) {
     return;
   }
 
-  status.textContent = '📝 請輸入你要出的 4 位數字';
+  status.textContent = '📝 請輸入你要出的 4 位數字（第一位不能是 0）';
   status.classList.add('my-turn');
   status.classList.remove('wait-turn');
   if (!hasMine) $('bullsSecret').focus();
@@ -563,14 +582,25 @@ $('bullsGuess').addEventListener('keydown', (e) => {
 function submitBullsSecret() {
   if (!requireSocket() || bullsSecretSubmitted) return;
   const secret = $('bullsSecret').value.trim();
-  if (!secret) return;
+  const err = validateBullsNumber(secret);
+  if (err) {
+    showBullsFeedback(err, 'error');
+    return;
+  }
+  $('btnBullsSecret').disabled = true;
+  $('btnBullsSecret').textContent = '送出中...';
+  showBullsFeedback('正在送出題目...', 'success');
   socket.emit('game:bulls-set-secret', { secret });
 }
 
 function submitBulls() {
   if (!requireSocket()) return;
   const guess = $('bullsGuess').value.trim();
-  if (!guess) return;
+  const err = validateBullsNumber(guess);
+  if (err) {
+    showBullsFeedback(err, 'error');
+    return;
+  }
   socket.emit('game:bulls-guess', { guess });
 }
 
