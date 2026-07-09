@@ -8,7 +8,7 @@ function getServerUrl() {
 const GAME_INFO = {
   poker: { label: '撲克數學', icon: '🃏', startText: '翻牌出題' },
   sudoku: { label: '雙人數獨', icon: '🔢', startText: '開始數獨' },
-  bulls: { label: '幾A幾B', icon: '🎯', startText: '開始猜數字' },
+  bulls: { label: '幾A幾B', icon: '🎯', startText: '開始出題對戰' },
   blockblast: { label: 'Block Blast 解題', icon: '🧩', solo: true },
 };
 
@@ -34,6 +34,7 @@ let sudokuPuzzle = null;
 let sudokuGrid = null;
 let sudokuSelected = null;
 let bullsCurrentTurnId = null;
+let bullsSecretSubmitted = false;
 
 function showPanel(panel) {
   Object.values(panels).forEach((p) => p.classList.add('hidden'));
@@ -211,9 +212,36 @@ function bindSocketEvents() {
     if (isHost) $('btnSudokuNext').classList.remove('hidden');
   });
 
+  socket.on('game:bulls-setup', ({ submittedIds }) => {
+    showPanel(panels.bullsGame);
+    bullsSecretSubmitted = (submittedIds || []).includes(myId);
+    $('bullsRoundResult').classList.add('hidden');
+    $('btnBullsNext').classList.add('hidden');
+    $('bullsPlay').classList.add('hidden');
+    $('bullsSetup').classList.remove('hidden');
+    $('bullsSecret').value = '';
+    $('bullsGuess').value = '';
+    $('bullsFeedback').classList.add('hidden');
+    renderBullsHistory([]);
+    updateBullsSetupUI(submittedIds || []);
+  });
+
+  socket.on('game:bulls-setup-update', ({ submittedIds }) => {
+    bullsSecretSubmitted = (submittedIds || []).includes(myId);
+    updateBullsSetupUI(submittedIds || []);
+  });
+
+  socket.on('game:bulls-secret-ok', () => {
+    bullsSecretSubmitted = true;
+    $('bullsSecret').value = '';
+    $('bullsFeedback').classList.add('hidden');
+  });
+
   socket.on('game:bulls-new-round', ({ currentTurnId, currentTurnName, history }) => {
     showPanel(panels.bullsGame);
     bullsCurrentTurnId = currentTurnId;
+    $('bullsSetup').classList.add('hidden');
+    $('bullsPlay').classList.remove('hidden');
     $('bullsGuess').value = '';
     $('bullsFeedback').classList.add('hidden');
     $('bullsRoundResult').classList.add('hidden');
@@ -240,15 +268,19 @@ function bindSocketEvents() {
     fb.textContent = message;
   });
 
-  socket.on('game:bulls-won', ({ winnerName, guess, secret, attempts, history }) => {
+  socket.on('game:bulls-won', ({ winnerName, guess, secret, opponentName, revealedSecrets, attempts, history }) => {
     renderBullsHistory(history || []);
     updateBullsTurnUI(null, null, true);
     const el = $('bullsRoundResult');
     el.classList.remove('hidden');
+    const secretsHtml = (revealedSecrets || [])
+      .map((item) => `<li><strong>${item.playerName}</strong> 的題目：<strong>${item.secret}</strong></li>`)
+      .join('');
     el.innerHTML = `
-      <p class="winner">🎉 ${winnerName} 猜中了！</p>
+      <p class="winner">🎉 ${winnerName} 猜中了 ${opponentName} 的題目！</p>
       <p>最後一猜：<strong>${guess}</strong>（4A0B）· 本局共猜 ${attempts} 次</p>
-      <p>答案是：<strong>${secret}</strong></p>
+      <p>${opponentName} 的答案是：<strong>${secret}</strong></p>
+      <ul class="bulls-revealed">${secretsHtml}</ul>
     `;
     if (isHost) $('btnBullsNext').classList.remove('hidden');
   });
@@ -427,6 +459,27 @@ function renderBullsHistory(history) {
   });
 }
 
+function updateBullsSetupUI(submittedIds) {
+  const status = $('bullsSetupStatus');
+  const hasMine = submittedIds.includes(myId);
+  const waitingOpponent = hasMine && submittedIds.length < 2;
+
+  $('bullsSecret').disabled = hasMine;
+  $('btnBullsSecret').disabled = hasMine;
+
+  if (waitingOpponent) {
+    status.textContent = '✅ 已出題，等待對手出題...';
+    status.classList.add('wait-turn');
+    status.classList.remove('my-turn');
+    return;
+  }
+
+  status.textContent = '📝 請輸入你要出的 4 位數字';
+  status.classList.add('my-turn');
+  status.classList.remove('wait-turn');
+  if (!hasMine) $('bullsSecret').focus();
+}
+
 function updateBullsTurnUI(currentTurnId, currentTurnName, gameOver = false) {
   const status = $('bullsTurnStatus');
   const isMyTurn = currentTurnId === myId;
@@ -442,7 +495,7 @@ function updateBullsTurnUI(currentTurnId, currentTurnName, gameOver = false) {
   }
 
   if (isMyTurn) {
-    status.textContent = '🎯 輪到你了，請猜測！';
+    status.textContent = '🎯 輪到你了，猜對手的數字！';
     status.classList.add('my-turn');
     status.classList.remove('wait-turn');
     $('bullsGuess').value = '';
@@ -493,12 +546,26 @@ $('btnSudokuSubmit').addEventListener('click', () => {
 });
 
 $('btnBullsSubmit').addEventListener('click', submitBulls);
+$('btnBullsSecret').addEventListener('click', submitBullsSecret);
+$('bullsSecret').addEventListener('input', (e) => {
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+});
+$('bullsSecret').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') submitBullsSecret();
+});
 $('bullsGuess').addEventListener('input', (e) => {
   e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
 });
 $('bullsGuess').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') submitBulls();
 });
+
+function submitBullsSecret() {
+  if (!requireSocket() || bullsSecretSubmitted) return;
+  const secret = $('bullsSecret').value.trim();
+  if (!secret) return;
+  socket.emit('game:bulls-set-secret', { secret });
+}
 
 function submitBulls() {
   if (!requireSocket()) return;

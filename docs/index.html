@@ -42,7 +42,7 @@
         <button class="game-card" data-game="bulls">
           <span class="game-card-icon">🎯</span>
           <span class="game-card-name">幾A幾B</span>
-          <span class="game-card-desc">輪流猜 4 位數字，先猜中者贏</span>
+          <span class="game-card-desc">各自出題，輪流猜對手的數字</span>
         </button>
         <button class="game-card" data-game="blockblast">
           <span class="game-card-icon">🧩</span>
@@ -142,17 +142,30 @@
     <!-- 幾A幾B -->
     <section id="bullsGame" class="panel hidden">
       <div class="bulls-rules">
-        <p>系統想好一組 <strong>4 位不重複數字</strong>（0～9），兩人<strong>輪流</strong>猜。</p>
+        <p>兩人各想一組 <strong>4 位不重複數字</strong>（0～9）出給對手猜，對手看不到你的答案。</p>
         <p><strong>A</strong> = 數字對且位置對　<strong>B</strong> = 數字對但位置錯</p>
-        <p>例如答案是 <code>1234</code>，猜 <code>1567</code> → <strong>1A0B</strong>，然後換對手猜。</p>
+        <p>例如對手題目是 <code>1234</code>，你猜 <code>1567</code> → <strong>1A0B</strong>，然後換對手猜你的題。</p>
       </div>
-      <p id="bullsTurnStatus" class="bulls-turn-status">等待開始...</p>
-      <div class="answer-row">
-        <input id="bullsGuess" type="text" placeholder="輸入 4 位數字" maxlength="4" inputmode="numeric" />
-        <button id="btnBullsSubmit" class="btn btn-primary">送出猜測</button>
+
+      <div id="bullsSetup" class="bulls-setup">
+        <p id="bullsSetupStatus" class="bulls-turn-status">請輸入你要出的題目</p>
+        <div class="answer-row">
+          <input id="bullsSecret" type="password" placeholder="你的 4 位數字（對手看不到）" maxlength="4" inputmode="numeric" autocomplete="off" />
+          <button id="btnBullsSecret" class="btn btn-primary">出題</button>
+        </div>
       </div>
+
       <p id="bullsFeedback" class="feedback hidden"></p>
-      <ul id="bullsHistory" class="bulls-history"></ul>
+
+      <div id="bullsPlay" class="bulls-play hidden">
+        <p id="bullsTurnStatus" class="bulls-turn-status">等待開始...</p>
+        <div class="answer-row">
+          <input id="bullsGuess" type="text" placeholder="猜對手的 4 位數字" maxlength="4" inputmode="numeric" />
+          <button id="btnBullsSubmit" class="btn btn-primary">送出猜測</button>
+        </div>
+        <ul id="bullsHistory" class="bulls-history"></ul>
+      </div>
+
       <div id="bullsRoundResult" class="round-result hidden"></div>
       <button id="btnBullsNext" class="btn btn-secondary hidden">下一題（房主）</button>
     </section>

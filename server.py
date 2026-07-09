@@ -191,11 +191,6 @@ def validate_sudoku_grid(player_grid, solution, puzzle):
 
 # ── 幾A幾B ──────────────────────────────────────────
 
-def generate_bulls_secret():
-    digits = random.sample("0123456789", 4)
-    return "".join(digits)
-
-
 def calc_ab(secret, guess):
     a = sum(1 for i in range(4) if secret[i] == guess[i])
     secret_rest = []
@@ -339,20 +334,17 @@ def start_sudoku_round(room, code):
 
 
 def start_bulls_round(room, code):
-    secret = generate_bulls_secret()
     first = room["players"][0]
-    room["gameState"] = "playing"
+    room["gameState"] = "setup"
     room["round"] = {
-        "secret": secret,
+        "secrets": {},
         "winner": None,
         "turnIndex": 0,
         "currentTurn": first["id"],
         "history": [],
     }
-    socketio.emit("game:bulls-new-round", {
-        "currentTurnId": first["id"],
-        "currentTurnName": first["name"],
-        "history": [],
+    socketio.emit("game:bulls-setup", {
+        "submittedIds": [],
     }, room=code)
 
 
@@ -461,6 +453,45 @@ def _bulls_next_turn(room, rnd):
     return player
 
 
+@socketio.on("game:bulls-set-secret")
+def on_bulls_set_secret(data):
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room or room["gameType"] != "bulls" or room["gameState"] != "setup":
+        return
+    rnd = room.get("round")
+    if not rnd:
+        return
+
+    secret = (data.get("secret") or "").strip()
+    ok, message = validate_bulls_guess(secret)
+    if not ok:
+        emit("game:bulls-result", {"correct": False, "message": message})
+        return
+    if sid in rnd["secrets"]:
+        emit("game:bulls-result", {"correct": False, "message": "你已經出過題了"})
+        return
+
+    rnd["secrets"][sid] = secret
+    emit("game:bulls-secret-ok", {})
+
+    socketio.emit("game:bulls-setup-update", {
+        "submittedIds": list(rnd["secrets"].keys()),
+    }, room=code)
+
+    if len(rnd["secrets"]) == len(room["players"]):
+        room["gameState"] = "playing"
+        first = room["players"][0]
+        socketio.emit("game:bulls-new-round", {
+            "currentTurnId": first["id"],
+            "currentTurnName": first["name"],
+            "history": [],
+        }, room=code)
+    broadcast_room(room)
+
+
 @socketio.on("game:bulls-guess")
 def on_bulls_guess(data):
     from flask import request
@@ -483,8 +514,16 @@ def on_bulls_guess(data):
         emit("game:bulls-result", {"correct": False, "message": message})
         return
 
+    opponent = next((p for p in room["players"] if p["id"] != sid), None)
+    if not opponent:
+        return
+    opponent_secret = rnd["secrets"].get(opponent["id"])
+    if not opponent_secret:
+        emit("game:bulls-result", {"correct": False, "message": "對手尚未出題，請稍候"})
+        return
+
     player = next((p for p in room["players"] if p["id"] == sid), None)
-    a, b = calc_ab(rnd["secret"], guess)
+    a, b = calc_ab(opponent_secret, guess)
     entry = {
         "playerId": sid,
         "playerName": player["name"] if player else "玩家",
@@ -500,7 +539,16 @@ def on_bulls_guess(data):
             "winnerId": sid,
             "winnerName": player["name"] if player else "玩家",
             "guess": guess,
-            "secret": rnd["secret"],
+            "secret": opponent_secret,
+            "opponentName": opponent["name"],
+            "revealedSecrets": [
+                {
+                    "playerId": p["id"],
+                    "playerName": p["name"],
+                    "secret": rnd["secrets"][p["id"]],
+                }
+                for p in room["players"]
+            ],
             "attempts": len(rnd["history"]),
             "history": rnd["history"],
         }, room=code)

@@ -289,6 +289,20 @@ body {
   border-radius: 4px;
 }
 
+.bulls-setup {
+  margin-bottom: 1rem;
+}
+
+.bulls-revealed {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+  color: var(--text-muted);
+}
+
+.bulls-revealed li {
+  margin: 0.25rem 0;
+}
+
 .bulls-turn-status {
   text-align: center;
   font-weight: 600;
