@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""雙人連線撲克牌加減乘除對戰 — WebSocket 伺服器（部署到 Render 等雲端）"""
+"""雙人連線遊戲平台 — 撲克數學 & 數獨對戰"""
 
 import os
 import random
@@ -14,6 +14,9 @@ DOCS_DIR = os.path.join(BASE_DIR, "docs")
 app = Flask(__name__, static_folder=DOCS_DIR, static_url_path="")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "poker-math-duel")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+
+GAME_TYPES = {"poker", "sudoku"}
+GAME_LABELS = {"poker": "撲克數學", "sudoku": "雙人數獨"}
 
 SUITS = ["♠", "♥", "♦", "♣"]
 RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
@@ -100,13 +103,6 @@ def generate_puzzle():
     }
 
 
-def uses_each_card_once(expression, values):
-    used = [int(x) for x in re.findall(r"\d+", expression)]
-    if len(used) != len(values):
-        return False
-    return sorted(used) == sorted(values)
-
-
 def safe_eval(expr):
     sanitized = re.sub(r"\s", "", expr)
     if not re.fullmatch(r"[\d+\-*/().]+", sanitized):
@@ -124,9 +120,80 @@ def safe_eval(expr):
         return None
 
 
+def uses_each_card_once(expression, values):
+    used = [int(x) for x in re.findall(r"\d+", expression)]
+    if len(used) != len(values):
+        return False
+    return sorted(used) == sorted(values)
+
+
+# ── 數獨 ──────────────────────────────────────────────
+
+def _sudoku_valid(grid, row, col, num):
+    if num in grid[row]:
+        return False
+    if num in [grid[r][col] for r in range(9)]:
+        return False
+    br, bc = 3 * (row // 3), 3 * (col // 3)
+    for r in range(br, br + 3):
+        for c in range(bc, bc + 3):
+            if grid[r][c] == num:
+                return False
+    return True
+
+
+def _sudoku_solve(grid):
+    for row in range(9):
+        for col in range(9):
+            if grid[row][col] == 0:
+                nums = list(range(1, 10))
+                random.shuffle(nums)
+                for num in nums:
+                    if _sudoku_valid(grid, row, col, num):
+                        grid[row][col] = num
+                        if _sudoku_solve(grid):
+                            return True
+                        grid[row][col] = 0
+                return False
+    return True
+
+
+def _sudoku_complete():
+    grid = [[0] * 9 for _ in range(9)]
+    _sudoku_solve(grid)
+    return grid
+
+
+def generate_sudoku_puzzle(clues=36):
+    solution = _sudoku_complete()
+    puzzle = [row[:] for row in solution]
+    cells = [(r, c) for r in range(9) for c in range(9)]
+    random.shuffle(cells)
+    for r, c in cells[: 81 - clues]:
+        puzzle[r][c] = 0
+    return {"puzzle": puzzle, "solution": solution}
+
+
+def validate_sudoku_grid(player_grid, solution, puzzle):
+    if len(player_grid) != 9 or any(len(row) != 9 for row in player_grid):
+        return False, "格子格式不正確"
+    for r in range(9):
+        for c in range(9):
+            val = player_grid[r][c]
+            if not isinstance(val, int) or val < 1 or val > 9:
+                return False, "還有空格沒填完"
+            if puzzle[r][c] != 0 and val != puzzle[r][c]:
+                return False, "不能修改題目給定的數字"
+            if val != solution[r][c]:
+                return False, "有數字填錯了，再檢查一下"
+    return True, "完成！"
+
+
 def get_room_state(room):
     return {
         "code": room["code"],
+        "gameType": room["gameType"],
+        "gameLabel": GAME_LABELS.get(room["gameType"], ""),
         "players": room["players"],
         "isFull": len(room["players"]) == 2,
         "gameState": room["gameState"],
@@ -158,9 +225,14 @@ def on_create(data):
     from flask import request
     sid = request.sid
     name = (data.get("name") or "玩家").strip()[:12] or "玩家"
+    game_type = data.get("gameType", "poker")
+    if game_type not in GAME_TYPES:
+        emit("error", {"message": "不支援的遊戲類型"})
+        return
     code = generate_room_code()
     room = {
         "code": code,
+        "gameType": game_type,
         "players": [{"id": sid, "name": name, "isHost": True}],
         "gameState": "waiting",
         "round": None,
@@ -168,7 +240,7 @@ def on_create(data):
     rooms[code] = room
     sid_to_room[sid] = code
     join_room(code)
-    emit("room:created", {"code": code})
+    emit("room:created", {"code": code, "gameType": game_type})
     broadcast_room(room)
 
 
@@ -178,10 +250,14 @@ def on_join(data):
     sid = request.sid
     code = (data.get("code") or "").strip().upper()
     name = (data.get("name") or "玩家").strip()[:12] or "玩家"
+    game_type = data.get("gameType", "poker")
     room = rooms.get(code)
 
     if not room:
         emit("error", {"message": "找不到這個房間代碼"})
+        return
+    if room["gameType"] != game_type:
+        emit("error", {"message": f"這是「{GAME_LABELS[room['gameType']]}」房間，請選對遊戲再加入"})
         return
     if len(room["players"]) >= 2:
         emit("error", {"message": "房間已滿（最多 2 人）"})
@@ -190,7 +266,7 @@ def on_join(data):
     room["players"].append({"id": sid, "name": name, "isHost": False})
     sid_to_room[sid] = code
     join_room(code)
-    emit("room:joined", {"code": code})
+    emit("room:joined", {"code": code, "gameType": room["gameType"]})
     broadcast_room(room)
 
     if len(room["players"]) == 2:
@@ -199,6 +275,36 @@ def on_join(data):
             {"message": "兩位玩家都已連線！可以開始遊戲了"},
             room=code,
         )
+
+
+def start_poker_round(room, code):
+    puzzle = generate_puzzle()
+    room["gameState"] = "playing"
+    room["round"] = {
+        "cards": puzzle["cards"],
+        "target": puzzle["target"],
+        "values": puzzle["values"],
+        "winner": None,
+        "submissions": {},
+    }
+    socketio.emit("game:poker-new-round", {
+        "cards": puzzle["cards"],
+        "target": puzzle["target"],
+    }, room=code)
+
+
+def start_sudoku_round(room, code):
+    sudoku = generate_sudoku_puzzle(clues=36)
+    room["gameState"] = "playing"
+    room["round"] = {
+        "puzzle": sudoku["puzzle"],
+        "solution": sudoku["solution"],
+        "winner": None,
+        "submissions": {},
+    }
+    socketio.emit("game:sudoku-new-round", {
+        "puzzle": sudoku["puzzle"],
+    }, room=code)
 
 
 @socketio.on("game:start-round")
@@ -211,35 +317,26 @@ def on_start_round():
         return
     player = next((p for p in room["players"] if p["id"] == sid), None)
     if not player or not player.get("isHost"):
-        emit("error", {"message": "只有房主可以出題"})
+        emit("error", {"message": "只有房主可以開始"})
         return
     if len(room["players"]) < 2:
         emit("error", {"message": "需要兩位玩家連線才能開始"})
         return
 
-    puzzle = generate_puzzle()
-    room["gameState"] = "playing"
-    room["round"] = {
-        "cards": puzzle["cards"],
-        "target": puzzle["target"],
-        "values": puzzle["values"],
-        "winner": None,
-        "submissions": {},
-    }
-    socketio.emit("game:new-round", {
-        "cards": puzzle["cards"],
-        "target": puzzle["target"],
-    }, room=code)
+    if room["gameType"] == "poker":
+        start_poker_round(room, code)
+    else:
+        start_sudoku_round(room, code)
     broadcast_room(room)
 
 
-@socketio.on("game:submit")
-def on_submit(data):
+@socketio.on("game:poker-submit")
+def on_poker_submit(data):
     from flask import request
     sid = request.sid
     code = sid_to_room.get(sid)
     room = rooms.get(code)
-    if not room or room["gameState"] != "playing":
+    if not room or room["gameType"] != "poker" or room["gameState"] != "playing":
         return
     rnd = room.get("round")
     if not rnd or rnd.get("winner"):
@@ -248,10 +345,10 @@ def on_submit(data):
     expr = (data.get("expression") or "").strip()
     result = safe_eval(expr)
     if result is None:
-        emit("game:result", {"correct": False, "message": "算式不正確，且答案必須是整數（除法只能整除）"})
+        emit("game:poker-result", {"correct": False, "message": "算式不正確，且答案必須是整數（除法只能整除）"})
         return
     if not uses_each_card_once(expr, rnd["values"]):
-        emit("game:result", {"correct": False, "message": "必須剛好使用四張牌的數字各一次"})
+        emit("game:poker-result", {"correct": False, "message": "必須剛好使用四張牌的數字各一次"})
         return
 
     correct = result == rnd["target"]
@@ -260,7 +357,7 @@ def on_submit(data):
     if correct:
         rnd["winner"] = sid
         winner = next((p for p in room["players"] if p["id"] == sid), None)
-        socketio.emit("game:round-won", {
+        socketio.emit("game:poker-won", {
             "winnerId": sid,
             "winnerName": winner["name"] if winner else "玩家",
             "expression": expr,
@@ -269,12 +366,47 @@ def on_submit(data):
         }, room=code)
         room["gameState"] = "round-end"
     else:
-        emit("game:result", {
+        emit("game:poker-result", {
             "correct": False,
             "message": f"結果是 {result}，目標是 {rnd['target']}",
             "result": result,
         })
     broadcast_room(room)
+
+
+@socketio.on("game:sudoku-submit")
+def on_sudoku_submit(data):
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room or room["gameType"] != "sudoku" or room["gameState"] != "playing":
+        return
+    rnd = room.get("round")
+    if not rnd or rnd.get("winner"):
+        return
+
+    grid = data.get("grid")
+    ok, message = validate_sudoku_grid(grid, rnd["solution"], rnd["puzzle"])
+    rnd["submissions"][sid] = {"correct": ok, "message": message}
+
+    if ok:
+        rnd["winner"] = sid
+        winner = next((p for p in room["players"] if p["id"] == sid), None)
+        socketio.emit("game:sudoku-won", {
+            "winnerId": sid,
+            "winnerName": winner["name"] if winner else "玩家",
+        }, room=code)
+        room["gameState"] = "round-end"
+    else:
+        emit("game:sudoku-result", {"correct": False, "message": message})
+    broadcast_room(room)
+
+
+# 相容舊版事件名稱
+@socketio.on("game:submit")
+def on_submit_compat(data):
+    on_poker_submit(data)
 
 
 @socketio.on("disconnect")
@@ -306,5 +438,5 @@ def on_disconnect():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 3000))
-    print(f"🃏 撲克數學對戰 API 已啟動：http://localhost:{port}")
+    print(f"🎮 雙人遊戲平台已啟動：http://localhost:{port}")
     socketio.run(app, host="0.0.0.0", port=port, debug=False, allow_unsafe_werkzeug=True)

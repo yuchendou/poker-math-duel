@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>撲克數學對戰</title>
+  <title>雙人遊戲坊</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
@@ -14,20 +14,38 @@
 
   <main class="app">
     <header class="header">
-      <h1>🃏 撲克數學對戰</h1>
-      <p class="subtitle">翻四張牌，用整數加減乘除湊出目標數字！</p>
+      <h1 id="mainTitle">🎮 雙人遊戲坊</h1>
+      <p id="mainSubtitle" class="subtitle">選一個遊戲，跟朋友連線對戰！</p>
     </header>
 
     <div id="setupBanner" class="setup-banner hidden">
       ⚠️ GitHub Pages 只有遊戲畫面，還需要 Render 後端。<br />
-      請先到 <a href="https://render.com" target="_blank" rel="noopener">render.com</a> 部署後端，再把網址填進 <code>docs/config.js</code> 的 <code>SERVER_URL</code>。<br />
-      或者直接用 Render 給你的網址玩（更簡單）。
+      請先到 <a href="https://render.com" target="_blank" rel="noopener">render.com</a> 部署後端，再把網址填進 <code>docs/config.js</code> 的 <code>SERVER_URL</code>。
     </div>
 
     <div id="serverStatus" class="server-status hidden"></div>
 
+    <!-- 遊戲選擇 -->
+    <section id="gameSelect" class="panel">
+      <h2 class="section-title">選擇遊戲</h2>
+      <div class="game-cards">
+        <button class="game-card" data-game="poker">
+          <span class="game-card-icon">🃏</span>
+          <span class="game-card-name">撲克數學</span>
+          <span class="game-card-desc">四張牌加減乘除，湊出目標整數</span>
+        </button>
+        <button class="game-card" data-game="sudoku">
+          <span class="game-card-icon">🔢</span>
+          <span class="game-card-name">雙人數獨</span>
+          <span class="game-card-desc">同一題數獨，比誰先填完</span>
+        </button>
+      </div>
+    </section>
+
     <!-- 大廳 -->
-    <section id="lobby" class="panel">
+    <section id="lobby" class="panel hidden">
+      <div class="selected-game-badge" id="selectedGameBadge">撲克數學</div>
+      <button id="btnBackToSelect" class="btn btn-text">← 換遊戲</button>
       <div class="form-group">
         <label for="playerName">你的暱稱</label>
         <input id="playerName" type="text" placeholder="輸入暱稱" maxlength="12" value="玩家" />
@@ -43,11 +61,10 @@
       <div class="how-to">
         <h3>怎麼跟朋友玩？</h3>
         <ol>
-          <li>把遊戲網址傳給朋友（兩人開<strong>同一個連結</strong>）</li>
-          <li>玩家 A 按「建立房間」，得到 4 位房間代碼</li>
-          <li>把<strong>房間代碼</strong>傳給玩家 B（LINE、Discord 都行）</li>
-          <li>玩家 B 輸入代碼按「加入房間」</li>
-          <li>畫面顯示「兩位玩家已連線」就可以開始！</li>
+          <li>兩人選<strong>同一個遊戲</strong>，開同一個網址</li>
+          <li>玩家 A 建立房間，把房間代碼傳給 B</li>
+          <li>玩家 B 加入房間，顯示「兩位玩家已連線」</li>
+          <li>房主按開始，搶答！</li>
         </ol>
       </div>
     </section>
@@ -55,7 +72,8 @@
     <!-- 等待室 -->
     <section id="waiting" class="panel hidden">
       <div class="room-info">
-        <span class="label">房間代碼</span>
+        <span class="label">房間</span>
+        <span id="displayGameLabel" class="game-label">撲克數學</span>
         <span id="displayCode" class="room-code">----</span>
         <button id="btnCopy" class="btn btn-small">複製代碼</button>
       </div>
@@ -75,33 +93,40 @@
       </div>
 
       <p id="connectionMessage" class="connection-message">等待另一位玩家加入...</p>
-
-      <button id="btnStart" class="btn btn-primary hidden" disabled>翻牌出題</button>
-      <p id="hostHint" class="hint hidden">你是房主，等對手連線後可以出題</p>
+      <button id="btnStart" class="btn btn-primary hidden" disabled>開始遊戲</button>
+      <p id="hostHint" class="hint hidden">你是房主，等對手連線後可以開始</p>
     </section>
 
-    <!-- 遊戲中 -->
-    <section id="game" class="panel hidden">
+    <!-- 撲克數學 -->
+    <section id="pokerGame" class="panel hidden">
       <div class="target-bar">
         <div class="target-display">
           目標數字：<strong id="targetNumber">?</strong>
         </div>
         <p class="target-hint">只用 1～10 的牌 · 答案保證是整數</p>
       </div>
-
       <div class="cards-row" id="cardsRow"></div>
-
       <div class="answer-area">
-        <p class="hint">用四張牌的數字各一次，輸入算式（例如 <code>(8-2)*(4-1)</code> 或 <code>(6+4)+(10-2)</code>）</p>
+        <p class="hint">用四張牌的數字各一次（例如 <code>(8-2)*(4-1)</code>）</p>
         <div class="answer-row">
           <input id="expression" type="text" placeholder="輸入你的算式..." />
-          <button id="btnSubmit" class="btn btn-primary">送出答案</button>
+          <button id="btnPokerSubmit" class="btn btn-primary">送出答案</button>
         </div>
-        <p id="answerFeedback" class="feedback hidden"></p>
+        <p id="pokerFeedback" class="feedback hidden"></p>
       </div>
+      <div id="pokerRoundResult" class="round-result hidden"></div>
+      <button id="btnPokerNext" class="btn btn-secondary hidden">下一題（房主）</button>
+    </section>
 
-      <div id="roundResult" class="round-result hidden"></div>
-      <button id="btnNextRound" class="btn btn-secondary hidden">下一題（房主）</button>
+    <!-- 雙人數獨 -->
+    <section id="sudokuGame" class="panel hidden">
+      <p class="sudoku-hint">同一題數獨，先填完正確的人贏！</p>
+      <div id="sudokuBoard" class="sudoku-board"></div>
+      <div id="sudokuNumpad" class="sudoku-numpad"></div>
+      <p id="sudokuFeedback" class="feedback hidden"></p>
+      <button id="btnSudokuSubmit" class="btn btn-primary">我填完了！</button>
+      <div id="sudokuRoundResult" class="round-result hidden"></div>
+      <button id="btnSudokuNext" class="btn btn-secondary hidden">下一題（房主）</button>
     </section>
   </main>
 

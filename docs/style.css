@@ -96,6 +96,179 @@ body {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
+.hidden {
+  display: none !important;
+}
+
+.section-title {
+  text-align: center;
+  font-size: 1.1rem;
+  margin-bottom: 1.25rem;
+  color: var(--muted);
+}
+
+.game-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.game-card {
+  background: var(--bg);
+  border: 2px solid var(--surface2);
+  border-radius: 14px;
+  padding: 1.25rem 1rem;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.2s, transform 0.15s;
+  color: var(--text);
+  font-family: inherit;
+}
+
+.game-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.game-card-icon {
+  display: block;
+  font-size: 2.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.game-card-name {
+  display: block;
+  font-weight: 700;
+  font-size: 1.05rem;
+  margin-bottom: 0.35rem;
+}
+
+.game-card-desc {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.selected-game-badge {
+  display: inline-block;
+  background: rgba(240, 180, 41, 0.15);
+  color: var(--accent);
+  padding: 0.3rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+.btn-text {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 1rem;
+  font-family: inherit;
+  display: block;
+}
+
+.btn-text:hover {
+  color: var(--accent);
+}
+
+.game-label {
+  font-size: 0.85rem;
+  color: var(--accent2);
+  font-weight: 600;
+}
+
+.sudoku-hint {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}
+
+.sudoku-board {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 0;
+  max-width: 360px;
+  margin: 0 auto 1rem;
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sudoku-cell {
+  aspect-ratio: 1;
+  border: 1px solid var(--surface2);
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.sudoku-cell.given {
+  background: var(--surface2);
+  color: var(--accent);
+  cursor: default;
+  font-weight: 700;
+}
+
+.sudoku-cell.selected {
+  background: rgba(240, 180, 41, 0.2);
+  outline: 2px solid var(--accent);
+  z-index: 1;
+}
+
+.sudoku-cell.border-bottom {
+  border-bottom: 2px solid var(--accent);
+}
+
+.sudoku-cell.border-right {
+  border-right: 2px solid var(--accent);
+}
+
+.sudoku-numpad {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.5rem;
+  max-width: 360px;
+  margin: 0 auto 1rem;
+}
+
+.numpad-btn {
+  padding: 0.65rem;
+  border: 1px solid var(--surface2);
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--text);
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.numpad-btn:hover {
+  border-color: var(--accent);
+}
+
+.numpad-btn.clear {
+  grid-column: span 2;
+  font-size: 0.9rem;
+  font-family: 'Noto Sans TC', sans-serif;
+}
+
+#btnSudokuSubmit {
+  display: block;
+  margin: 0 auto;
+}
+
 .setup-banner a {
   color: var(--accent);
 }
@@ -459,12 +632,16 @@ input[type='text']:focus {
   color: var(--accent2);
 }
 
-#btnNextRound {
+#btnPokerNext {
   display: block;
   margin: 1rem auto 0;
 }
 
 @media (max-width: 480px) {
+  .game-cards {
+    grid-template-columns: 1fr;
+  }
+
   .cards-row {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -479,5 +656,14 @@ input[type='text']:focus {
 
   .answer-row {
     flex-direction: column;
+  }
+
+  .sudoku-board,
+  .sudoku-numpad {
+    max-width: 100%;
+  }
+
+  .sudoku-cell {
+    font-size: 0.95rem;
   }
 }
