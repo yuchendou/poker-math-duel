@@ -1,7 +1,13 @@
 function getServerUrl() {
   const configured = window.GAME_CONFIG?.SERVER_URL?.trim();
   if (configured) return configured.replace(/\/$/, '');
-  // 前後端同一個網址（Render 一鍵部署）時，直接連到自己
+
+  // GitHub Pages 只能放靜態檔，必須在 config.js 填 Render 後端網址
+  if (window.location.hostname.includes('github.io')) {
+    return null;
+  }
+
+  // Render 等雲端部署：前後端同一個網址
   return window.location.origin;
 }
 
@@ -31,6 +37,11 @@ function updateServerStatus(text, ok) {
 }
 
 function initSocket() {
+  if (!serverUrl) {
+    showSetupBanner();
+    return;
+  }
+
   updateServerStatus(`正在連線到伺服器 ${serverUrl} ...`, true);
 
   socket = io(serverUrl, {

@@ -96,8 +96,8 @@ body {
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
 }
 
-.hidden {
-  display: none !important;
+.setup-banner a {
+  color: var(--accent);
 }
 
 .form-group {
