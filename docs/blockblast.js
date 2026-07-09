@@ -5,7 +5,7 @@
   const SIZE = 8;
   const PIECE_SIZE = 5;
   const PIECE_COLORS = ['#5b9bd5', '#3ecf8e', '#f0b429'];
-  const MAX_SOLUTIONS = 12;
+  const MAX_SOLUTIONS = 5;
 
   let board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
   let pieces = [newPiece(), newPiece(), newPiece()];
