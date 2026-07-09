@@ -9,6 +9,7 @@ const GAME_INFO = {
   poker: { label: '撲克數學', icon: '🃏', startText: '翻牌出題' },
   sudoku: { label: '雙人數獨', icon: '🔢', startText: '開始數獨' },
   bulls: { label: '幾A幾B', icon: '🎯', startText: '開始猜數字' },
+  blockblast: { label: 'Block Blast 解題', icon: '🧩', solo: true },
 };
 
 const serverUrl = getServerUrl();
@@ -21,6 +22,7 @@ const panels = {
   pokerGame: $('pokerGame'),
   sudokuGame: $('sudokuGame'),
   bullsGame: $('bullsGame'),
+  blockblastGame: $('blockblastGame'),
 };
 
 let socket = null;
@@ -69,10 +71,22 @@ function requireSocket() {
 function selectGame(gameType) {
   selectedGame = gameType;
   const info = GAME_INFO[gameType];
+  if (info.solo) {
+    $('mainSubtitle').textContent = info.label;
+    showPanel(panels.blockblastGame);
+    if (window.openBlockBlast) window.openBlockBlast();
+    return;
+  }
   $('selectedGameBadge').textContent = info.label;
   $('mainSubtitle').textContent = `正在玩：${info.label}`;
   showPanel(panels.lobby);
 }
+
+window.showGameSelect = function () {
+  selectedGame = null;
+  $('mainSubtitle').textContent = '選一個遊戲，跟朋友連線對戰！';
+  showPanel(panels.gameSelect);
+};
 
 document.querySelectorAll('.game-card').forEach((btn) => {
   btn.addEventListener('click', () => selectGame(btn.dataset.game));

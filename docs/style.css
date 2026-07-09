@@ -39,7 +39,7 @@ body {
 .app {
   position: relative;
   z-index: 1;
-  max-width: 720px;
+  max-width: 900px;
   margin: 0 auto;
   padding: 2rem 1.25rem 4rem;
 }
@@ -109,7 +109,7 @@ body {
 
 .game-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 1rem;
 }
 
@@ -701,6 +701,202 @@ input[type='text']:focus {
   margin: 1rem auto 0;
 }
 
+/* Block Blast 解題 */
+.bb-panel {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.bb-title {
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.bb-intro {
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.88rem;
+  margin-bottom: 1.25rem;
+}
+
+.bb-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.bb-section-title {
+  font-size: 0.95rem;
+  color: var(--accent);
+  margin-bottom: 0.75rem;
+  text-align: center;
+}
+
+.bb-board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
+  padding: 4px;
+  background: var(--surface2);
+  border-radius: 8px;
+}
+
+.bb-board.mini {
+  max-width: 200px;
+}
+
+.bb-cell {
+  aspect-ratio: 1;
+  border: none;
+  border-radius: 3px;
+  background: #2a3548;
+  cursor: pointer;
+  padding: 0;
+}
+
+.bb-cell.filled {
+  background: #6b7c9e;
+}
+
+.bb-cell.readonly {
+  cursor: default;
+  pointer-events: none;
+}
+
+.bb-cell.piece {
+  border-radius: 3px;
+}
+
+.bb-board-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.bb-pieces-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.75rem;
+}
+
+.bb-piece-wrap {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 0.75rem;
+  text-align: center;
+}
+
+.bb-piece-label {
+  display: block;
+  font-weight: 700;
+  font-size: 0.85rem;
+  margin-bottom: 0.5rem;
+}
+
+.bb-piece-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  max-width: 120px;
+  margin: 0 auto 0.5rem;
+  padding: 3px;
+  background: var(--surface2);
+  border-radius: 6px;
+}
+
+.bb-piece-cell {
+  aspect-ratio: 1;
+  border: none;
+  border-radius: 2px;
+  background: #2a3548;
+  cursor: pointer;
+  padding: 0;
+}
+
+.bb-piece-cell.filled {
+  background: var(--piece-color, var(--accent));
+}
+
+.bb-piece-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  justify-content: center;
+}
+
+.bb-preset {
+  min-width: 28px;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--surface2);
+  border-radius: 6px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 0.75rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.bb-preset:hover {
+  border-color: var(--accent);
+}
+
+.bb-solve-btn {
+  display: block;
+  margin: 1.25rem auto 0;
+  min-width: 200px;
+}
+
+.bb-status {
+  text-align: center;
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.bb-status.ok {
+  color: var(--accent2);
+}
+
+.bb-status.error {
+  color: var(--danger);
+}
+
+.bb-solutions {
+  margin-top: 1.25rem;
+}
+
+.bb-solution-card {
+  background: var(--bg);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 1px solid var(--surface2);
+}
+
+.bb-solution-card h4 {
+  color: var(--accent);
+  margin-bottom: 0.75rem;
+}
+
+.bb-step {
+  margin-bottom: 1rem;
+}
+
+.bb-step-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.35rem;
+}
+
+.bb-no-solution {
+  text-align: center;
+  color: var(--muted);
+  padding: 1rem;
+}
+
 @media (max-width: 600px) {
   .game-cards {
     grid-template-columns: 1fr;
@@ -729,5 +925,9 @@ input[type='text']:focus {
 
   .sudoku-cell {
     font-size: 0.95rem;
+  }
+
+  .bb-pieces-row {
+    grid-template-columns: 1fr;
   }
 }
