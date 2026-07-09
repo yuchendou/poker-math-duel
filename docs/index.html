@@ -39,6 +39,11 @@
           <span class="game-card-name">雙人數獨</span>
           <span class="game-card-desc">同一題數獨，比誰先填完</span>
         </button>
+        <button class="game-card" data-game="bulls">
+          <span class="game-card-icon">🎯</span>
+          <span class="game-card-name">幾A幾B</span>
+          <span class="game-card-desc">猜 4 位不重複數字，先猜中者贏</span>
+        </button>
       </div>
     </section>
 
@@ -127,6 +132,23 @@
       <button id="btnSudokuSubmit" class="btn btn-primary">我填完了！</button>
       <div id="sudokuRoundResult" class="round-result hidden"></div>
       <button id="btnSudokuNext" class="btn btn-secondary hidden">下一題（房主）</button>
+    </section>
+
+    <!-- 幾A幾B -->
+    <section id="bullsGame" class="panel hidden">
+      <div class="bulls-rules">
+        <p>系統想好一組 <strong>4 位不重複數字</strong>（0～9），兩人搶答猜測。</p>
+        <p><strong>A</strong> = 數字對且位置對　<strong>B</strong> = 數字對但位置錯</p>
+        <p>例如答案是 <code>1234</code>，猜 <code>1567</code> → <strong>1A0B</strong></p>
+      </div>
+      <div class="answer-row">
+        <input id="bullsGuess" type="text" placeholder="輸入 4 位數字" maxlength="4" inputmode="numeric" />
+        <button id="btnBullsSubmit" class="btn btn-primary">送出猜測</button>
+      </div>
+      <p id="bullsFeedback" class="feedback hidden"></p>
+      <ul id="bullsHistory" class="bulls-history"></ul>
+      <div id="bullsRoundResult" class="round-result hidden"></div>
+      <button id="btnBullsNext" class="btn btn-secondary hidden">下一題（房主）</button>
     </section>
   </main>
 

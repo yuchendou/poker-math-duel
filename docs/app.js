@@ -8,6 +8,7 @@ function getServerUrl() {
 const GAME_INFO = {
   poker: { label: '撲克數學', icon: '🃏', startText: '翻牌出題' },
   sudoku: { label: '雙人數獨', icon: '🔢', startText: '開始數獨' },
+  bulls: { label: '幾A幾B', icon: '🎯', startText: '開始猜數字' },
 };
 
 const serverUrl = getServerUrl();
@@ -19,6 +20,7 @@ const panels = {
   waiting: $('waiting'),
   pokerGame: $('pokerGame'),
   sudokuGame: $('sudokuGame'),
+  bullsGame: $('bullsGame'),
 };
 
 let socket = null;
@@ -194,6 +196,41 @@ function bindSocketEvents() {
     if (isHost) $('btnSudokuNext').classList.remove('hidden');
   });
 
+  socket.on('game:bulls-new-round', () => {
+    showPanel(panels.bullsGame);
+    $('bullsGuess').value = '';
+    $('bullsGuess').disabled = false;
+    $('btnBullsSubmit').disabled = false;
+    $('bullsFeedback').classList.add('hidden');
+    $('bullsRoundResult').classList.add('hidden');
+    $('btnBullsNext').classList.add('hidden');
+    $('bullsHistory').innerHTML = '';
+    $('bullsGuess').focus();
+  });
+
+  socket.on('game:bulls-result', ({ guess, a, b, message, history }) => {
+    const fb = $('bullsFeedback');
+    fb.classList.remove('hidden', 'success', 'error');
+    fb.classList.add('error');
+    fb.textContent = `${guess} → ${message}`;
+    renderBullsHistory(history);
+    $('bullsGuess').value = '';
+    $('bullsGuess').focus();
+  });
+
+  socket.on('game:bulls-won', ({ winnerName, guess, secret, attempts }) => {
+    $('bullsGuess').disabled = true;
+    $('btnBullsSubmit').disabled = true;
+    const el = $('bullsRoundResult');
+    el.classList.remove('hidden');
+    el.innerHTML = `
+      <p class="winner">🎉 ${winnerName} 猜中了！</p>
+      <p>最後一猜：<strong>${guess}</strong>（4A0B）· 用了 ${attempts} 次</p>
+      <p>答案是：<strong>${secret}</strong></p>
+    `;
+    if (isHost) $('btnBullsNext').classList.remove('hidden');
+  });
+
   socket.on('error', ({ message }) => {
     if (!panels.waiting.classList.contains('hidden')) {
       $('connectionMessage').textContent = `❌ ${message}`;
@@ -358,6 +395,16 @@ function setSudokuCell(num) {
   renderSudokuBoard();
 }
 
+function renderBullsHistory(history) {
+  const list = $('bullsHistory');
+  list.innerHTML = '';
+  (history || []).slice().reverse().forEach((item) => {
+    const li = document.createElement('li');
+    li.textContent = `${item.guess} → ${item.a}A${item.b}B`;
+    list.appendChild(li);
+  });
+}
+
 $('btnStart').addEventListener('click', () => {
   if (!requireSocket()) return;
   socket.emit('game:start-round');
@@ -369,6 +416,11 @@ $('btnPokerNext').addEventListener('click', () => {
 });
 
 $('btnSudokuNext').addEventListener('click', () => {
+  if (!requireSocket()) return;
+  socket.emit('game:start-round');
+});
+
+$('btnBullsNext').addEventListener('click', () => {
   if (!requireSocket()) return;
   socket.emit('game:start-round');
 });
@@ -389,5 +441,20 @@ $('btnSudokuSubmit').addEventListener('click', () => {
   if (!requireSocket()) return;
   socket.emit('game:sudoku-submit', { grid: sudokuGrid });
 });
+
+$('btnBullsSubmit').addEventListener('click', submitBulls);
+$('bullsGuess').addEventListener('input', (e) => {
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+});
+$('bullsGuess').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') submitBulls();
+});
+
+function submitBulls() {
+  if (!requireSocket()) return;
+  const guess = $('bullsGuess').value.trim();
+  if (!guess) return;
+  socket.emit('game:bulls-guess', { guess });
+}
 
 initSocket();

@@ -109,7 +109,7 @@ body {
 
 .game-cards {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
 }
 
@@ -267,6 +267,48 @@ body {
 #btnSudokuSubmit {
   display: block;
   margin: 0 auto;
+}
+
+.bulls-rules {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.7;
+}
+
+.bulls-rules strong {
+  color: var(--accent);
+}
+
+.bulls-rules code {
+  background: var(--surface2);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.bulls-history {
+  list-style: none;
+  margin: 1rem 0 0;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.bulls-history li {
+  padding: 0.5rem 0.75rem;
+  background: var(--bg);
+  border-radius: 8px;
+  margin-bottom: 0.4rem;
+  font-family: 'Space Grotesk', monospace;
+  font-size: 1rem;
+  text-align: center;
+}
+
+#btnBullsNext {
+  display: block;
+  margin: 1rem auto 0;
 }
 
 .setup-banner a {
@@ -637,7 +679,7 @@ input[type='text']:focus {
   margin: 1rem auto 0;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 600px) {
   .game-cards {
     grid-template-columns: 1fr;
   }

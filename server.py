@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""雙人連線遊戲平台 — 撲克數學 & 數獨對戰"""
+"""雙人連線遊戲平台 — 撲克數學、數獨、幾A幾B"""
 
 import os
 import random
@@ -15,8 +15,8 @@ app = Flask(__name__, static_folder=DOCS_DIR, static_url_path="")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "poker-math-duel")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
-GAME_TYPES = {"poker", "sudoku"}
-GAME_LABELS = {"poker": "撲克數學", "sudoku": "雙人數獨"}
+GAME_TYPES = {"poker", "sudoku", "bulls"}
+GAME_LABELS = {"poker": "撲克數學", "sudoku": "雙人數獨", "bulls": "幾A幾B"}
 
 SUITS = ["♠", "♥", "♦", "♣"]
 RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
@@ -189,6 +189,37 @@ def validate_sudoku_grid(player_grid, solution, puzzle):
     return True, "完成！"
 
 
+# ── 幾A幾B ──────────────────────────────────────────
+
+def generate_bulls_secret():
+    digits = random.sample("0123456789", 4)
+    return "".join(digits)
+
+
+def calc_ab(secret, guess):
+    a = sum(1 for i in range(4) if secret[i] == guess[i])
+    secret_rest = []
+    guess_rest = []
+    for i in range(4):
+        if secret[i] != guess[i]:
+            secret_rest.append(secret[i])
+            guess_rest.append(guess[i])
+    b = 0
+    for g in guess_rest:
+        if g in secret_rest:
+            b += 1
+            secret_rest.remove(g)
+    return a, b
+
+
+def validate_bulls_guess(guess):
+    if not re.fullmatch(r"\d{4}", guess):
+        return False, "請輸入 4 位數字"
+    if len(set(guess)) != 4:
+        return False, "4 個數字不能重複"
+    return True, ""
+
+
 def get_room_state(room):
     return {
         "code": room["code"],
@@ -307,6 +338,17 @@ def start_sudoku_round(room, code):
     }, room=code)
 
 
+def start_bulls_round(room, code):
+    secret = generate_bulls_secret()
+    room["gameState"] = "playing"
+    room["round"] = {
+        "secret": secret,
+        "winner": None,
+        "histories": {},
+    }
+    socketio.emit("game:bulls-new-round", {}, room=code)
+
+
 @socketio.on("game:start-round")
 def on_start_round():
     from flask import request
@@ -325,8 +367,10 @@ def on_start_round():
 
     if room["gameType"] == "poker":
         start_poker_round(room, code)
-    else:
+    elif room["gameType"] == "sudoku":
         start_sudoku_round(room, code)
+    else:
+        start_bulls_round(room, code)
     broadcast_room(room)
 
 
@@ -400,6 +444,51 @@ def on_sudoku_submit(data):
         room["gameState"] = "round-end"
     else:
         emit("game:sudoku-result", {"correct": False, "message": message})
+    broadcast_room(room)
+
+
+@socketio.on("game:bulls-guess")
+def on_bulls_guess(data):
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room or room["gameType"] != "bulls" or room["gameState"] != "playing":
+        return
+    rnd = room.get("round")
+    if not rnd or rnd.get("winner"):
+        return
+
+    guess = (data.get("guess") or "").strip()
+    ok, message = validate_bulls_guess(guess)
+    if not ok:
+        emit("game:bulls-result", {"correct": False, "message": message})
+        return
+
+    a, b = calc_ab(rnd["secret"], guess)
+    history = rnd["histories"].setdefault(sid, [])
+    history.append({"guess": guess, "a": a, "b": b})
+
+    if a == 4:
+        rnd["winner"] = sid
+        winner = next((p for p in room["players"] if p["id"] == sid), None)
+        socketio.emit("game:bulls-won", {
+            "winnerId": sid,
+            "winnerName": winner["name"] if winner else "玩家",
+            "guess": guess,
+            "secret": rnd["secret"],
+            "attempts": len(history),
+        }, room=code)
+        room["gameState"] = "round-end"
+    else:
+        emit("game:bulls-result", {
+            "correct": False,
+            "guess": guess,
+            "a": a,
+            "b": b,
+            "message": f"{a}A{b}B",
+            "history": history,
+        })
     broadcast_room(room)
 
 
