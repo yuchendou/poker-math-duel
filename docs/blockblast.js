@@ -6,8 +6,109 @@
   const PIECE_SIZE = 5;
   const PIECE_COLORS = ['#5b9bd5', '#3ecf8e', '#f0b429'];
   const MAX_SOLUTIONS = 5;
+  const MAX_SEARCH = 400;
 
-  let board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+  function countFilled(b) {
+    return b.flat().filter((v) => v === 1).length;
+  }
+
+  function isBoardEmpty(b) {
+    return countFilled(b) === 0;
+  }
+
+  function clearLinesWithStats(b) {
+    const next = b.map((row) => [...row]);
+    const fullRows = [];
+    const fullCols = [];
+    for (let r = 0; r < SIZE; r++) {
+      if (next[r].every((v) => v === 1)) fullRows.push(r);
+    }
+    for (let c = 0; c < SIZE; c++) {
+      if (next.every((row) => row[c] === 1)) fullCols.push(c);
+    }
+    fullRows.forEach((r) => next[r].fill(0));
+    fullCols.forEach((c) => {
+      for (let r = 0; r < SIZE; r++) next[r][c] = 0;
+    });
+    const linesCleared = fullRows.length + fullCols.length;
+    return {
+      board: next,
+      linesCleared,
+      rowsCleared: fullRows.length,
+      colsCleared: fullCols.length,
+    };
+  }
+
+  function placeCells(b, cells, row, col) {
+    const next = b.map((rowArr) => [...rowArr]);
+    for (const { r, c } of cells) {
+      next[row + r][col + c] = 1;
+    }
+    const stats = clearLinesWithStats(next);
+    return {
+      board: stats.board,
+      linesCleared: stats.linesCleared,
+      rowsCleared: stats.rowsCleared,
+      colsCleared: stats.colsCleared,
+    };
+  }
+
+  function scoreSolution(sol) {
+    let score = 0;
+    let totalLines = 0;
+    let maxCombo = 0;
+    let streak = 0;
+    let maxStreak = 0;
+
+    sol.steps.forEach((step) => {
+      const lines = step.linesCleared || 0;
+      totalLines += lines;
+      if (lines > 0) {
+        streak += 1;
+        maxStreak = Math.max(maxStreak, streak);
+        maxCombo = Math.max(maxCombo, lines);
+        score += lines * 50;
+        if (lines >= 2) score += lines * lines * 100;
+      } else {
+        streak = 0;
+      }
+    });
+
+    score += maxStreak * 80;
+    if (maxCombo >= 3) score += 150;
+
+    const fullClear = isBoardEmpty(sol.finalBoard);
+    if (fullClear) {
+      score += 100000;
+    } else {
+      score -= countFilled(sol.finalBoard) * 15;
+    }
+
+    sol.score = score;
+    sol.fullClear = fullClear;
+    sol.totalLines = totalLines;
+    sol.maxCombo = maxCombo;
+    sol.maxStreak = maxStreak;
+    return score;
+  }
+
+  function formatClearLabel(step) {
+    if (!step.linesCleared) return '無消除';
+    const parts = [];
+    if (step.rowsCleared) parts.push(`${step.rowsCleared} 行`);
+    if (step.colsCleared) parts.push(`${step.colsCleared} 列`);
+    const combo = step.linesCleared >= 2 ? ` · Combo×${step.linesCleared}` : '';
+    return `消除 ${parts.join(' ')}${combo}`;
+  }
+
+  function formatScoreSummary(sol) {
+    const tags = [];
+    if (sol.fullClear) tags.push('全盤消除');
+    if (sol.maxCombo >= 2) tags.push(`最大 Combo×${sol.maxCombo}`);
+    if (sol.maxStreak >= 2) tags.push(`連續 ${sol.maxStreak} 次消除`);
+    if (sol.totalLines) tags.push(`共 ${sol.totalLines} 線`);
+    return tags.join(' · ') || '可放置';
+  }
   let pieces = [newPiece(), newPiece(), newPiece()];
   let solutions = [];
 
@@ -36,24 +137,7 @@
     return cells.map((p) => ({ r: p.r - minR, c: p.c - minC }));
   }
 
-  function clearLines(b) {
-    const next = b.map((row) => [...row]);
-    const fullRows = [];
-    const fullCols = [];
-    for (let r = 0; r < SIZE; r++) {
-      if (next[r].every((v) => v === 1)) fullRows.push(r);
-    }
-    for (let c = 0; c < SIZE; c++) {
-      if (next.every((row) => row[c] === 1)) fullCols.push(c);
-    }
-    fullRows.forEach((r) => next[r].fill(0));
-    fullCols.forEach((c) => {
-      for (let r = 0; r < SIZE; r++) next[r][c] = 0;
-    });
-    return next;
-  }
-
-  function canPlace(b, cells, row, col) {
+  let board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
     for (const { r, c } of cells) {
       const nr = row + r;
       const nc = col + c;
@@ -63,15 +147,7 @@
     return true;
   }
 
-  function placeCells(b, cells, row, col) {
-    const next = b.map((rowArr) => [...rowArr]);
-    for (const { r, c } of cells) {
-      next[row + r][col + c] = 1;
-    }
-    return clearLines(next);
-  }
-
-  function permutations(arr) {
+  function canPlace(b, cells, row, col) {
     if (arr.length <= 1) return [arr];
     const result = [];
     arr.forEach((item, i) => {
@@ -82,12 +158,14 @@
   }
 
   function dfs(order, depth, currentBoard, steps, found, pieceCellsList) {
-    if (found.length >= MAX_SOLUTIONS) return;
+    if (found.length >= MAX_SEARCH) return;
     if (depth === 3) {
-      found.push({
+      const sol = {
         steps: steps.map((s) => ({ ...s })),
         finalBoard: currentBoard.map((r) => [...r]),
-      });
+      };
+      scoreSolution(sol);
+      found.push(sol);
       return;
     }
 
@@ -96,17 +174,20 @@
     for (let r = 0; r < SIZE; r++) {
       for (let c = 0; c < SIZE; c++) {
         if (!canPlace(currentBoard, shape, r, c)) continue;
-        const nextBoard = placeCells(currentBoard, shape, r, c);
+        const placed = placeCells(currentBoard, shape, r, c);
         steps.push({
           pieceIdx,
           cells: shape.map((p) => ({ ...p })),
           row: r,
           col: c,
-          boardAfter: nextBoard.map((row) => [...row]),
+          boardAfter: placed.board.map((row) => [...row]),
+          linesCleared: placed.linesCleared,
+          rowsCleared: placed.rowsCleared,
+          colsCleared: placed.colsCleared,
         });
-        dfs(order, depth + 1, nextBoard, steps, found, pieceCellsList);
+        dfs(order, depth + 1, placed.board, steps, found, pieceCellsList);
         steps.pop();
-        if (found.length >= MAX_SOLUTIONS) return;
+        if (found.length >= MAX_SEARCH) return;
       }
     }
   }
@@ -182,8 +263,12 @@
 
     list.forEach((sol, si) => {
       const card = document.createElement('div');
-      card.className = 'bb-solution-card';
-      card.innerHTML = `<h4>解法 ${si + 1}</h4>`;
+      card.className = 'bb-solution-card' + (sol.fullClear ? ' full-clear' : '');
+      const badge = sol.fullClear ? ' 🌟全盤消除' : '';
+      card.innerHTML = `
+        <h4>推薦 ${si + 1}${badge}</h4>
+        <p class="bb-score-detail">評分 ${sol.score} · ${formatScoreSummary(sol)}</p>
+      `;
 
       let prevBoard = board.map((r) => [...r]);
       sol.steps.forEach((step, i) => {
@@ -191,7 +276,7 @@
         stepEl.className = 'bb-step';
         const label = document.createElement('p');
         label.className = 'bb-step-label';
-        label.textContent = `步驟 ${i + 1}：放圖形 ${step.pieceIdx + 1} 於 (${step.row + 1}, ${step.col + 1})`;
+        label.textContent = `步驟 ${i + 1}：圖形 ${step.pieceIdx + 1} → (${step.row + 1}, ${step.col + 1}) · ${formatClearLabel(step)}`;
         const mini = document.createElement('div');
         mini.className = 'bb-board mini';
         renderSolutionBoard(mini, prevBoard, step, step.pieceIdx);
@@ -243,18 +328,26 @@
       const found = [];
       const orders = permutations([0, 1, 2]);
       for (const order of orders) {
-        if (found.length >= MAX_SOLUTIONS) break;
+        if (found.length >= MAX_SEARCH) break;
         dfs(order, 0, board.map((r) => [...r]), [], found, pieceCells);
       }
-      solutions = found;
-      if (found.length) {
-        $('bbStatus').textContent = `✅ 找到 ${found.length} 種放法${found.length >= MAX_SOLUTIONS ? '（僅顯示前 ' + MAX_SOLUTIONS + ' 種）' : ''}`;
+
+      found.sort((a, b) => b.score - a.score);
+      const top = found.slice(0, MAX_SOLUTIONS);
+      solutions = top;
+
+      if (top.length) {
+        const total = found.length;
+        const fullCount = top.filter((s) => s.fullClear).length;
+        let msg = `✅ 找到 ${total} 種放法，推薦評分最高的 ${top.length} 種`;
+        if (fullCount) msg += `（含 ${fullCount} 種全盤消除）`;
+        $('bbStatus').textContent = msg;
         $('bbStatus').className = 'bb-status ok';
       } else {
         $('bbStatus').textContent = '❌ 找不到解法';
         $('bbStatus').className = 'bb-status error';
       }
-      renderSolutions(found);
+      renderSolutions(top);
     }, 30);
   }
 

@@ -876,6 +876,17 @@ input[type='text']:focus {
   border: 1px solid var(--surface2);
 }
 
+.bb-solution-card.full-clear {
+  border-color: var(--accent2);
+  box-shadow: 0 0 0 1px rgba(62, 207, 142, 0.25);
+}
+
+.bb-score-detail {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin-bottom: 0.75rem;
+}
+
 .bb-solution-card h4 {
   color: var(--accent);
   margin-bottom: 0.75rem;
