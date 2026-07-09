@@ -53,12 +53,12 @@
     };
   }
 
-  function scoreSolution(sol) {
-    let score = 0;
+  function rankSolution(sol) {
     let totalLines = 0;
     let maxCombo = 0;
     let streak = 0;
     let maxStreak = 0;
+    let sortKey = 0;
 
     sol.steps.forEach((step) => {
       const lines = step.linesCleared || 0;
@@ -67,47 +67,41 @@
         streak += 1;
         maxStreak = Math.max(maxStreak, streak);
         maxCombo = Math.max(maxCombo, lines);
-        score += lines * 50;
-        if (lines >= 2) score += lines * lines * 100;
       } else {
         streak = 0;
       }
     });
 
-    score += maxStreak * 80;
-    if (maxCombo >= 3) score += 150;
-
     const fullClear = isBoardEmpty(sol.finalBoard);
-    if (fullClear) {
-      score += 100000;
-    } else {
-      score -= countFilled(sol.finalBoard) * 15;
-    }
+    const remaining = countFilled(sol.finalBoard);
 
-    sol.score = score;
+    if (fullClear) sortKey += 100000;
+    sortKey += totalLines * 100;
+    sortKey += maxCombo * 50;
+    sortKey += maxStreak * 30;
+    sortKey -= remaining * 10;
+
+    sol.sortKey = sortKey;
     sol.fullClear = fullClear;
+    sol.remaining = remaining;
     sol.totalLines = totalLines;
     sol.maxCombo = maxCombo;
-    sol.maxStreak = maxStreak;
-    return score;
+    return sortKey;
   }
 
-  function formatClearLabel(step) {
-    if (!step.linesCleared) return '無消除';
+  function formatStepLabel(step) {
+    const pos = `圖形 ${step.pieceIdx + 1} → (${step.row + 1}, ${step.col + 1})`;
+    if (!step.linesCleared) return pos;
     const parts = [];
     if (step.rowsCleared) parts.push(`${step.rowsCleared} 行`);
     if (step.colsCleared) parts.push(`${step.colsCleared} 列`);
-    const combo = step.linesCleared >= 2 ? ` · Combo×${step.linesCleared}` : '';
-    return `消除 ${parts.join(' ')}${combo}`;
+    return `${pos} · 消除${parts.join('')}`;
   }
 
-  function formatScoreSummary(sol) {
-    const tags = [];
-    if (sol.fullClear) tags.push('全盤消除');
-    if (sol.maxCombo >= 2) tags.push(`最大 Combo×${sol.maxCombo}`);
-    if (sol.maxStreak >= 2) tags.push(`連續 ${sol.maxStreak} 次消除`);
-    if (sol.totalLines) tags.push(`共 ${sol.totalLines} 線`);
-    return tags.join(' · ') || '可放置';
+  function formatResultSummary(sol) {
+    if (sol.fullClear) return '三個都放完，棋盤全空！';
+    if (sol.remaining === 0) return '棋盤全空';
+    return `放完後還剩 ${sol.remaining} 格有方塊`;
   }
   let board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
   let pieces = [newPiece(), newPiece(), newPiece()];
@@ -165,7 +159,7 @@
         steps: steps.map((s) => ({ ...s })),
         finalBoard: currentBoard.map((r) => [...r]),
       };
-      scoreSolution(sol);
+      rankSolution(sol);
       found.push(sol);
       return;
     }
@@ -265,10 +259,10 @@
     list.forEach((sol, si) => {
       const card = document.createElement('div');
       card.className = 'bb-solution-card' + (sol.fullClear ? ' full-clear' : '');
-      const badge = sol.fullClear ? ' 🌟全盤消除' : '';
+      const badge = sol.fullClear ? ' ✨ 全空' : '';
       card.innerHTML = `
-        <h4>推薦 ${si + 1}${badge}</h4>
-        <p class="bb-score-detail">評分 ${sol.score} · ${formatScoreSummary(sol)}</p>
+        <h4>方案 ${si + 1}${badge}</h4>
+        <p class="bb-score-detail">${formatResultSummary(sol)}</p>
       `;
 
       let prevBoard = board.map((r) => [...r]);
@@ -277,7 +271,7 @@
         stepEl.className = 'bb-step';
         const label = document.createElement('p');
         label.className = 'bb-step-label';
-        label.textContent = `步驟 ${i + 1}：圖形 ${step.pieceIdx + 1} → (${step.row + 1}, ${step.col + 1}) · ${formatClearLabel(step)}`;
+        label.textContent = `步驟 ${i + 1}：${formatStepLabel(step)}`;
         const mini = document.createElement('div');
         mini.className = 'bb-board mini';
         renderSolutionBoard(mini, prevBoard, step, step.pieceIdx);
@@ -286,6 +280,26 @@
         card.appendChild(stepEl);
         prevBoard = step.boardAfter;
       });
+
+      if (!sol.fullClear) {
+        const finalEl = document.createElement('div');
+        finalEl.className = 'bb-step';
+        const finalLabel = document.createElement('p');
+        finalLabel.className = 'bb-step-label';
+        finalLabel.textContent = '最終棋盤';
+        const mini = document.createElement('div');
+        mini.className = 'bb-board mini';
+        for (let r = 0; r < SIZE; r++) {
+          for (let c = 0; c < SIZE; c++) {
+            const cell = document.createElement('div');
+            cell.className = 'bb-cell readonly' + (sol.finalBoard[r][c] ? ' filled' : '');
+            mini.appendChild(cell);
+          }
+        }
+        finalEl.appendChild(finalLabel);
+        finalEl.appendChild(mini);
+        card.appendChild(finalEl);
+      }
 
       wrap.appendChild(card);
     });
