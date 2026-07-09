@@ -1,0 +1,14 @@
+{
+  "name": "poker-math-duel",
+  "version": "1.0.0",
+  "description": "雙人連線撲克牌加減乘除對戰遊戲",
+  "main": "server.js",
+  "scripts": {
+    "start": "python3 server.py",
+    "start:node": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
