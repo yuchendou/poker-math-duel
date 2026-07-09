@@ -1,12 +1,8 @@
 function getServerUrl() {
   const configured = window.GAME_CONFIG?.SERVER_URL?.trim();
   if (configured) return configured.replace(/\/$/, '');
-
-  const host = window.location.hostname;
-  if (host === 'localhost' || host === '127.0.0.1') {
-    return window.location.origin;
-  }
-  return null;
+  // 前後端同一個網址（Render 一鍵部署）時，直接連到自己
+  return window.location.origin;
 }
 
 const serverUrl = getServerUrl();
@@ -35,11 +31,6 @@ function updateServerStatus(text, ok) {
 }
 
 function initSocket() {
-  if (!serverUrl) {
-    showSetupBanner();
-    return;
-  }
-
   updateServerStatus(`正在連線到伺服器 ${serverUrl} ...`, true);
 
   socket = io(serverUrl, {

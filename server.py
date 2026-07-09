@@ -5,10 +5,13 @@ import os
 import random
 import re
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit, join_room
 
-app = Flask(__name__)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DOCS_DIR = os.path.join(BASE_DIR, "docs")
+
+app = Flask(__name__, static_folder=DOCS_DIR, static_url_path="")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "poker-math-duel")
 socketio = SocketIO(app, cors_allowed_origins="*")
 
@@ -118,7 +121,7 @@ def broadcast_room(room):
 
 @app.route("/")
 def index():
-    return jsonify({"status": "ok", "message": "撲克數學對戰 API 運行中", "health": "/health"})
+    return send_from_directory(DOCS_DIR, "index.html")
 
 
 @app.route("/health")
