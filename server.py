@@ -340,13 +340,20 @@ def start_sudoku_round(room, code):
 
 def start_bulls_round(room, code):
     secret = generate_bulls_secret()
+    first = room["players"][0]
     room["gameState"] = "playing"
     room["round"] = {
         "secret": secret,
         "winner": None,
-        "histories": {},
+        "turnIndex": 0,
+        "currentTurn": first["id"],
+        "history": [],
     }
-    socketio.emit("game:bulls-new-round", {}, room=code)
+    socketio.emit("game:bulls-new-round", {
+        "currentTurnId": first["id"],
+        "currentTurnName": first["name"],
+        "history": [],
+    }, room=code)
 
 
 @socketio.on("game:start-round")
@@ -447,6 +454,13 @@ def on_sudoku_submit(data):
     broadcast_room(room)
 
 
+def _bulls_next_turn(room, rnd):
+    rnd["turnIndex"] = (rnd["turnIndex"] + 1) % len(room["players"])
+    player = room["players"][rnd["turnIndex"]]
+    rnd["currentTurn"] = player["id"]
+    return player
+
+
 @socketio.on("game:bulls-guess")
 def on_bulls_guess(data):
     from flask import request
@@ -459,36 +473,46 @@ def on_bulls_guess(data):
     if not rnd or rnd.get("winner"):
         return
 
+    if sid != rnd["currentTurn"]:
+        emit("game:bulls-result", {"correct": False, "message": "還沒輪到你，請等待對手猜測"})
+        return
+
     guess = (data.get("guess") or "").strip()
     ok, message = validate_bulls_guess(guess)
     if not ok:
         emit("game:bulls-result", {"correct": False, "message": message})
         return
 
+    player = next((p for p in room["players"] if p["id"] == sid), None)
     a, b = calc_ab(rnd["secret"], guess)
-    history = rnd["histories"].setdefault(sid, [])
-    history.append({"guess": guess, "a": a, "b": b})
+    entry = {
+        "playerId": sid,
+        "playerName": player["name"] if player else "玩家",
+        "guess": guess,
+        "a": a,
+        "b": b,
+    }
+    rnd["history"].append(entry)
 
     if a == 4:
         rnd["winner"] = sid
-        winner = next((p for p in room["players"] if p["id"] == sid), None)
         socketio.emit("game:bulls-won", {
             "winnerId": sid,
-            "winnerName": winner["name"] if winner else "玩家",
+            "winnerName": player["name"] if player else "玩家",
             "guess": guess,
             "secret": rnd["secret"],
-            "attempts": len(history),
+            "attempts": len(rnd["history"]),
+            "history": rnd["history"],
         }, room=code)
         room["gameState"] = "round-end"
     else:
-        emit("game:bulls-result", {
-            "correct": False,
-            "guess": guess,
-            "a": a,
-            "b": b,
-            "message": f"{a}A{b}B",
-            "history": history,
-        })
+        next_player = _bulls_next_turn(room, rnd)
+        socketio.emit("game:bulls-update", {
+            "history": rnd["history"],
+            "lastResult": entry,
+            "currentTurnId": next_player["id"],
+            "currentTurnName": next_player["name"],
+        }, room=code)
     broadcast_room(room)
 
 

@@ -289,7 +289,29 @@ body {
   border-radius: 4px;
 }
 
-.bulls-history {
+.bulls-turn-status {
+  text-align: center;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  padding: 0.6rem;
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.bulls-turn-status.my-turn {
+  color: var(--accent2);
+  border: 1px solid rgba(62, 207, 142, 0.35);
+}
+
+.bulls-turn-status.wait-turn {
+  color: var(--muted);
+}
+
+.bulls-history li .bulls-player {
+  color: var(--accent);
+  font-family: 'Noto Sans TC', sans-serif;
+  font-size: 0.85rem;
+}
   list-style: none;
   margin: 1rem 0 0;
   max-height: 200px;

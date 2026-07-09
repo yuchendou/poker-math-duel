@@ -31,6 +31,7 @@ let selectedGame = null;
 let sudokuPuzzle = null;
 let sudokuGrid = null;
 let sudokuSelected = null;
+let bullsCurrentTurnId = null;
 
 function showPanel(panel) {
   Object.values(panels).forEach((p) => p.classList.add('hidden'));
@@ -196,36 +197,43 @@ function bindSocketEvents() {
     if (isHost) $('btnSudokuNext').classList.remove('hidden');
   });
 
-  socket.on('game:bulls-new-round', () => {
+  socket.on('game:bulls-new-round', ({ currentTurnId, currentTurnName, history }) => {
     showPanel(panels.bullsGame);
+    bullsCurrentTurnId = currentTurnId;
     $('bullsGuess').value = '';
-    $('bullsGuess').disabled = false;
-    $('btnBullsSubmit').disabled = false;
     $('bullsFeedback').classList.add('hidden');
     $('bullsRoundResult').classList.add('hidden');
     $('btnBullsNext').classList.add('hidden');
-    $('bullsHistory').innerHTML = '';
-    $('bullsGuess').focus();
+    renderBullsHistory(history || []);
+    updateBullsTurnUI(currentTurnId, currentTurnName);
   });
 
-  socket.on('game:bulls-result', ({ guess, a, b, message, history }) => {
+  socket.on('game:bulls-update', ({ history, lastResult, currentTurnId, currentTurnName }) => {
+    bullsCurrentTurnId = currentTurnId;
+    const fb = $('bullsFeedback');
+    fb.classList.remove('hidden', 'success', 'error');
+    fb.classList.add('success');
+    fb.textContent = `${lastResult.playerName} 猜 ${lastResult.guess} → ${lastResult.a}A${lastResult.b}B`;
+    renderBullsHistory(history);
+    updateBullsTurnUI(currentTurnId, currentTurnName);
+    if (currentTurnId === myId) $('bullsGuess').focus();
+  });
+
+  socket.on('game:bulls-result', ({ message }) => {
     const fb = $('bullsFeedback');
     fb.classList.remove('hidden', 'success', 'error');
     fb.classList.add('error');
-    fb.textContent = `${guess} → ${message}`;
-    renderBullsHistory(history);
-    $('bullsGuess').value = '';
-    $('bullsGuess').focus();
+    fb.textContent = message;
   });
 
-  socket.on('game:bulls-won', ({ winnerName, guess, secret, attempts }) => {
-    $('bullsGuess').disabled = true;
-    $('btnBullsSubmit').disabled = true;
+  socket.on('game:bulls-won', ({ winnerName, guess, secret, attempts, history }) => {
+    renderBullsHistory(history || []);
+    updateBullsTurnUI(null, null, true);
     const el = $('bullsRoundResult');
     el.classList.remove('hidden');
     el.innerHTML = `
       <p class="winner">🎉 ${winnerName} 猜中了！</p>
-      <p>最後一猜：<strong>${guess}</strong>（4A0B）· 用了 ${attempts} 次</p>
+      <p>最後一猜：<strong>${guess}</strong>（4A0B）· 本局共猜 ${attempts} 次</p>
       <p>答案是：<strong>${secret}</strong></p>
     `;
     if (isHost) $('btnBullsNext').classList.remove('hidden');
@@ -400,9 +408,37 @@ function renderBullsHistory(history) {
   list.innerHTML = '';
   (history || []).slice().reverse().forEach((item) => {
     const li = document.createElement('li');
-    li.textContent = `${item.guess} → ${item.a}A${item.b}B`;
+    li.innerHTML = `<span class="bulls-player">${item.playerName}</span> ${item.guess} → <strong>${item.a}A${item.b}B</strong>`;
     list.appendChild(li);
   });
+}
+
+function updateBullsTurnUI(currentTurnId, currentTurnName, gameOver = false) {
+  const status = $('bullsTurnStatus');
+  const isMyTurn = currentTurnId === myId;
+  const canPlay = !gameOver && isMyTurn;
+
+  $('bullsGuess').disabled = !canPlay;
+  $('btnBullsSubmit').disabled = !canPlay;
+
+  if (gameOver) {
+    status.textContent = '本局結束';
+    status.classList.remove('my-turn', 'wait-turn');
+    return;
+  }
+
+  if (isMyTurn) {
+    status.textContent = '🎯 輪到你了，請猜測！';
+    status.classList.add('my-turn');
+    status.classList.remove('wait-turn');
+    $('bullsGuess').value = '';
+    $('bullsGuess').focus();
+  } else {
+    status.textContent = `⏳ 輪到 ${currentTurnName} 猜測...`;
+    status.classList.add('wait-turn');
+    status.classList.remove('my-turn');
+    $('bullsGuess').value = '';
+  }
 }
 
 $('btnStart').addEventListener('click', () => {
