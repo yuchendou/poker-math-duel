@@ -347,16 +347,16 @@
         dfs(order, 0, board.map((r) => [...r]), [], found, pieceCells);
       }
 
-      found.sort((a, b) => b.score - a.score);
+      found.sort((a, b) => b.sortKey - a.sortKey);
       const top = found.slice(0, MAX_SOLUTIONS);
       solutions = top;
 
       if (top.length) {
-        const total = found.length;
         const fullCount = top.filter((s) => s.fullClear).length;
-        let msg = `✅ 找到 ${total} 種放法，推薦評分最高的 ${top.length} 種`;
-        if (fullCount) msg += `（含 ${fullCount} 種全盤消除）`;
-        $('bbStatus').textContent = msg;
+        let msg = fullCount
+          ? `找到 ${fullCount} 種能全空的放法（顯示最好的 ${top.length} 種）`
+          : `顯示清最多格的 ${top.length} 種放法`;
+        $('bbStatus').textContent = `✅ ${msg}`;
         $('bbStatus').className = 'bb-status ok';
       } else {
         $('bbStatus').textContent = '❌ 找不到解法';
