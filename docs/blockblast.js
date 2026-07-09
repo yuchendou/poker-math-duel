@@ -109,6 +109,7 @@
     if (sol.totalLines) tags.push(`共 ${sol.totalLines} 線`);
     return tags.join(' · ') || '可放置';
   }
+  let board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
   let pieces = [newPiece(), newPiece(), newPiece()];
   let solutions = [];
 
@@ -137,7 +138,7 @@
     return cells.map((p) => ({ r: p.r - minR, c: p.c - minC }));
   }
 
-  let board = Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+  function canPlace(b, cells, row, col) {
     for (const { r, c } of cells) {
       const nr = row + r;
       const nc = col + c;
@@ -147,7 +148,7 @@
     return true;
   }
 
-  function canPlace(b, cells, row, col) {
+  function permutations(arr) {
     if (arr.length <= 1) return [arr];
     const result = [];
     arr.forEach((item, i) => {
