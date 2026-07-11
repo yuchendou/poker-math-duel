@@ -365,6 +365,42 @@ function seatPositionClass(seatIdx, mySeat) {
   return ['mj-pos-self', 'mj-pos-right', 'mj-pos-top', 'mj-pos-left'][rel];
 }
 
+function clearDiscardAnim() {
+  mjDiscardQueue = [];
+  mjDiscardAnimating = false;
+  if (mjFlyTimer) {
+    clearTimeout(mjFlyTimer);
+    mjFlyTimer = null;
+  }
+  const fly = mjEl('mjDiscardFly');
+  if (fly) {
+    fly.classList.add('hidden');
+    fly.innerHTML = '';
+  }
+}
+
+function hideWinOverlay() {
+  mjEl('mjWinOverlay')?.classList.add('hidden');
+}
+
+function mountHandEndButtonsToOverlay() {
+  const actions = mjEl('mjWinOverlayActions');
+  const host = mjEl('mjHandEndActionsHost');
+  if (!actions || !host) return;
+  ['btnMahjongNext', 'btnMahjongSettle'].forEach((id) => {
+    const btn = mjEl(id);
+    if (btn && btn.parentElement !== actions) actions.appendChild(btn);
+  });
+}
+
+function restoreHandEndButtons() {
+  const host = mjEl('mjHandEndActionsHost');
+  if (!host) return;
+  ['btnMahjongNext', 'btnMahjongSettle'].forEach((id) => {
+    const btn = mjEl(id);
+    if (btn && btn.parentElement !== host) host.appendChild(btn);
+  });
+}
 function formatChip(n) {
   if (n > 0) return `+${n}`;
   return String(n);
@@ -585,9 +621,9 @@ function bindMahjong(socket, panels, showPanel) {
     mjRoundEnded = false;
     mjSelectedTile = null;
     mjDiscardSeq = getDiscardSeq(state);
-    mjDiscardQueue = [];
-    mjDiscardAnimating = false;
-    if (mjFlyTimer) clearTimeout(mjFlyTimer);
+    clearDiscardAnim();
+    hideWinOverlay();
+    restoreHandEndButtons();
     showPanel(panels.mahjongGame);
     mjEl('mjSeatDrawPanel')?.classList.add('hidden');
     mjEl('mjGameMain')?.classList.remove('hidden');
@@ -607,79 +643,102 @@ function bindMahjong(socket, panels, showPanel) {
 
   function showMahjongWinResult(state, socket) {
     mjRoundEnded = true;
+    clearDiscardAnim();
     hideClaimActions();
+
     const info = state.winInfo || {};
-    const el = mjEl('mjRoundResult');
-    if (!el) return;
-    el.classList.remove('hidden');
     const session = state.session || {};
     const chipPerTai = session.chipPerTai || 100;
     const chipBase = session.chipBase || 50;
     const payHtml = renderPaymentHtml(info.payments, chipPerTai, chipBase, info.tai);
     const myAmountHtml = renderMyWinAmount(info.payments, socket.id);
 
+    const overlay = mjEl('mjWinOverlay');
+    const overlayBody = mjEl('mjWinOverlayBody');
+    const roundEl = mjEl('mjRoundResult');
+    if (!overlay || !overlayBody) return;
+
     if (state.winner === 'draw') {
-      el.innerHTML = `<p class="winner">流局</p><p>${info.message || ''}</p>${payHtml}`;
-      showHandEndButtons(session);
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      return;
-    }
-
-    const taiHtml = (info.taiItems || []).map((t) => `<li>${t}</li>`).join('');
-    const isMe = info.winnerId === socket.id;
-    const handRow = document.createElement('div');
-    handRow.className = 'mj-win-tiles';
-    appendTileRow(handRow, info.hand || [], { size: 'sm' });
-    const flowerRow = document.createElement('div');
-    flowerRow.className = 'mj-win-tiles';
-    appendTileRow(flowerRow, info.flowers || [], { size: 'sm' });
-    const meldWrap = document.createElement('div');
-    meldWrap.className = 'mj-win-melds';
-    (info.melds || []).forEach((m) => {
-      if (typeof m === 'string') {
-        const legacy = document.createElement('div');
-        legacy.className = 'mj-meld-legacy';
-        legacy.textContent = m;
-        meldWrap.appendChild(legacy);
-      } else {
-        meldWrap.appendChild(renderMeldGroup(m));
+      const html = `<p class="winner">流局</p><p>${info.message || ''}</p>${payHtml}`;
+      overlayBody.innerHTML = html;
+      if (roundEl) {
+        roundEl.innerHTML = html;
+        roundEl.classList.add('hidden');
       }
-    });
+    } else {
+      const taiHtml = (info.taiItems || []).map((t) => `<li>${t}</li>`).join('');
+      const isMe = info.winnerId === socket.id;
+      const handRow = document.createElement('div');
+      handRow.className = 'mj-win-tiles';
+      appendTileRow(handRow, info.hand || [], { size: 'sm' });
+      const flowerRow = document.createElement('div');
+      flowerRow.className = 'mj-win-tiles';
+      appendTileRow(flowerRow, info.flowers || [], { size: 'sm' });
+      const meldWrap = document.createElement('div');
+      meldWrap.className = 'mj-win-melds';
+      (info.melds || []).forEach((m) => {
+        if (typeof m === 'string') {
+          const legacy = document.createElement('div');
+          legacy.className = 'mj-meld-legacy';
+          legacy.textContent = m;
+          meldWrap.appendChild(legacy);
+        } else {
+          meldWrap.appendChild(renderMeldGroup(m));
+        }
+      });
 
-    el.innerHTML = `
-      <p class="winner">${isMe ? '🎉 你胡牌了！' : `🎉 ${info.winnerName} 胡牌！`}</p>
-      ${myAmountHtml}
-      <p>${info.message || ''}</p>
-      <p class="mj-win-label">胡牌牌型（5組面子+1對眼牌）</p>
-      <p class="mj-win-label">手牌</p>
-      <p class="mj-win-label">花牌</p>
-      <p class="mj-win-label">面子</p>
-      <ul class="mj-tai-list">${taiHtml}</ul>
-      <p class="mj-tai-total">共 <strong>${info.tai || 0}</strong> 台</p>
-      ${payHtml}
-    `;
-    const labels = el.querySelectorAll('.mj-win-label');
-    labels[1]?.insertAdjacentElement('afterend', handRow);
-    labels[2]?.insertAdjacentElement('afterend', flowerRow);
-    labels[3]?.insertAdjacentElement('afterend', meldWrap);
+      overlayBody.innerHTML = `
+        <p class="winner">${isMe ? '🎉 你胡牌了！' : `🎉 ${info.winnerName} 胡牌！`}</p>
+        ${myAmountHtml}
+        <p>${info.message || ''}</p>
+        <ul class="mj-tai-list">${taiHtml}</ul>
+        <p class="mj-tai-total">共 <strong>${info.tai || 0}</strong> 台</p>
+        ${payHtml}
+      `;
+      const labels = overlayBody.querySelectorAll('.mj-win-label');
+      if (!labels.length) {
+        const detail = document.createElement('details');
+        detail.className = 'mj-win-detail';
+        detail.innerHTML = '<summary>查看胡牌牌型</summary>';
+        detail.append(handRow, flowerRow, meldWrap);
+        overlayBody.appendChild(detail);
+      }
 
-    if (session.jiangComplete) {
-      const note = document.createElement('p');
-      note.className = 'mj-jiang-done';
-      note.textContent = '🀄 東南西北風已打完！請按「不玩了，結算」。';
-      el.appendChild(note);
+      if (roundEl) {
+        roundEl.innerHTML = overlayBody.innerHTML;
+        roundEl.classList.add('hidden');
+      }
+
+      if (session.jiangComplete) {
+        const note = document.createElement('p');
+        note.className = 'mj-jiang-done';
+        note.textContent = '🀄 東南西北風已打完！請按「不玩了，結算」。';
+        overlayBody.appendChild(note);
+      }
     }
+
     showHandEndButtons(session);
-    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    mountHandEndButtonsToOverlay();
+    overlay.classList.remove('hidden');
   }
 
   socket.on('game:mahjong-win', (state) => {
     mjState = state;
-    renderMahjong(state);
+    renderSessionInfo(state.session);
     showMahjongWinResult(state, socket);
   });
 
+  bindBtn('btnMjWinDismiss', () => {
+    hideWinOverlay();
+    const roundEl = mjEl('mjRoundResult');
+    if (roundEl && roundEl.innerHTML.trim()) roundEl.classList.remove('hidden');
+    restoreHandEndButtons();
+    showHandEndButtons(mjState?.session);
+  });
+
   socket.on('game:mahjong-settled', (data) => {
+    hideWinOverlay();
+    restoreHandEndButtons();
     mjEl('btnMahjongNext')?.classList.add('hidden');
     mjEl('btnMahjongSettle')?.classList.add('hidden');
     mjEl('mjRoundResult')?.classList.add('hidden');

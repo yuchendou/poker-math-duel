@@ -721,6 +721,7 @@ def apply_zimo(rnd, seat_idx):
         rnd["winFlags"]["haiDi"] = True
     rnd["winnerSeat"] = seat_idx
     rnd["winType"] = "zimo"
+    rnd["winTile"] = rnd.get("lastDraw")
     rnd["phase"] = "ended"
     return True
 
@@ -978,7 +979,7 @@ def _is_all_triplets(hand, melds, extra=None):
     if extra:
         tiles.append(extra)
     for m in melds:
-        if m["type"] in ("pon", "minkong", "jiagong", "ankong"):
+        if m["type"] in ("pon", "minkong", "jiagang", "ankong"):
             n = 3 if m["type"] == "pon" else 4
             tiles.extend([m["tile"]] * n)
     counts = Counter(tiles)
@@ -1072,27 +1073,41 @@ def apply_declare_ting(rnd, seat_idx):
     return True, ""
 
 
-def _wait_shape_name(hand, melds, extra):
+def resolve_win_tile(rnd, win_type, extra_tile=None):
+    """自摸時胡牌張為 lastDraw／winTile，放槍為 winTile。"""
+    if extra_tile:
+        return extra_tile
+    if win_type == "zimo":
+        return rnd.get("winTile") or rnd.get("lastDraw")
+    return rnd.get("winTile")
+
+
+def _wait_shape_name(hand, melds, win_tile, win_type="ron"):
     """邊張、中洞、單吊（各 1 台）。"""
-    if not extra:
+    if not win_tile:
         return None
-    h = list(hand)
-    if extra in h:
-        h.remove(extra)
-    waits = _waiting_tiles(h, melds)
+    if win_type == "zimo":
+        pre = list(hand)
+        if win_tile in pre:
+            pre.remove(win_tile)
+    else:
+        pre = list(hand)
+    waits = _waiting_tiles(pre, melds)
     if len(waits) != 1:
         return None
     w = waits[0]
+    if w != win_tile:
+        return None
+    if pre.count(w) == 1:
+        return "單吊"
     if w[0] not in SUITS_NUM:
         return None
-    if h.count(w) == 1:
-        return "單吊"
     suit, n = w[0], int(w[1])
-    if n == 3 and f"{suit}1" in h and f"{suit}2" in h:
+    if n == 3 and f"{suit}1" in pre and f"{suit}2" in pre:
         return "邊張"
-    if n == 7 and f"{suit}8" in h and f"{suit}9" in h:
+    if n == 7 and f"{suit}8" in pre and f"{suit}9" in pre:
         return "邊張"
-    if 2 <= n <= 8 and f"{suit}{n - 1}" in h and f"{suit}{n + 1}" in h:
+    if 2 <= n <= 8 and f"{suit}{n - 1}" in pre and f"{suit}{n + 1}" in pre:
         return "中洞"
     return None
 
@@ -1102,7 +1117,7 @@ def _is_quanqiuren(hand, melds, is_ron):
         return False
     if len(hand) != 1:
         return False
-    return all(m["type"] in ("chi", "pon", "minkong", "jiagong") for m in melds)
+    return all(m["type"] in ("chi", "pon", "minkong", "jiagang") for m in melds)
 
 
 def _is_banqiuren(hand, melds, is_zimo):
@@ -1120,7 +1135,7 @@ def _is_pinghu(hand, melds, extra, flowers, is_zimo):
     """平胡 2 台：全順子、無字牌、無花、非自摸、非單吊。"""
     if is_zimo or flowers:
         return False
-    if any(m["type"] in ("pon", "minkong", "ankong", "jiagong") for m in melds):
+    if any(m["type"] in ("pon", "minkong", "ankong", "jiagang") for m in melds):
         return False
     tiles = all_tiles_for_win(hand, melds, extra)
     if any(t.startswith("Z") for t in tiles):
@@ -1134,7 +1149,7 @@ def _is_pinghu(hand, melds, extra, flowers, is_zimo):
         pass
     else:
         return False
-    if _wait_shape_name(hand, melds, extra) == "單吊":
+    if _wait_shape_name(hand, melds, extra, "ron") == "單吊":
         return False
     return len(_waiting_tiles(h, melds)) >= 1
 
@@ -1173,6 +1188,7 @@ def calc_tai(seat, rnd, win_type="zimo", extra_tile=None):
     dealer = rnd["dealer"]
     dc = rnd.get("discardCount", 0)
     round_wind = rnd.get("roundWind", 0)
+    extra_tile = resolve_win_tile(rnd, win_type, extra_tile)
 
     def add(n, name):
         nonlocal tai
@@ -1247,7 +1263,7 @@ def calc_tai(seat, rnd, win_type="zimo", extra_tile=None):
         if f in SEAT_FLOWERS.get(seat["seatIndex"], ()):
             add(1, f"花台{TILE_LABELS[f]}")
 
-    wait_name = _wait_shape_name(hand, melds, extra_tile)
+    wait_name = _wait_shape_name(hand, melds, extra_tile, win_type)
     if wait_name:
         add(1, wait_name)
 

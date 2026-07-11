@@ -251,7 +251,15 @@
         <button id="btnMahjongDiscard" type="button" class="btn btn-secondary">打出選取的牌</button>
       </div>
       <div id="mjRoundResult" class="round-result hidden"></div>
-      <div class="mj-hand-end-actions">
+      <div id="mjWinOverlay" class="mj-win-overlay hidden" role="dialog" aria-modal="true">
+        <div class="mj-win-modal">
+          <div id="mjWinOverlayBody" class="mj-win-modal-body"></div>
+          <div id="mjWinOverlayActions" class="mj-win-modal-actions">
+            <button id="btnMjWinDismiss" type="button" class="btn btn-secondary">先看一下牌型</button>
+          </div>
+        </div>
+      </div>
+      <div id="mjHandEndActionsHost" class="mj-hand-end-actions">
         <button id="btnMahjongNext" type="button" class="btn btn-primary hidden">下一局（房主）</button>
         <button id="btnMahjongSettle" type="button" class="btn btn-secondary hidden">不玩了，結算</button>
       </div>
@@ -324,10 +332,10 @@
     </section>
   </main>
 
-  <script src="./config.js?v=16"></script>
+  <script src="./config.js?v=17"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
-  <script src="./blockblast.js?v=16"></script>
-  <script src="./mahjong.js?v=16"></script>
-  <script src="./app.js?v=16"></script>
+  <script src="./blockblast.js?v=17"></script>
+  <script src="./mahjong.js?v=17"></script>
+  <script src="./app.js?v=17"></script>
 </body>
 </html>

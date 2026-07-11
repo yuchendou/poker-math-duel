@@ -863,6 +863,71 @@ input[type='text']:focus {
   background: rgba(0, 0, 0, 0.25);
 }
 
+.mj-win-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+}
+
+.mj-win-overlay.hidden {
+  display: none;
+}
+
+.mj-win-modal {
+  width: min(100%, 420px);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: linear-gradient(160deg, #1a3d2e 0%, #0f2818 100%);
+  border: 2px solid rgba(240, 180, 41, 0.65);
+  border-radius: 16px;
+  padding: 1.25rem 1rem 1rem;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+  animation: mj-win-modal-in 0.35s ease-out;
+}
+
+@keyframes mj-win-modal-in {
+  from { transform: scale(0.85); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.mj-win-modal-body {
+  text-align: center;
+}
+
+.mj-win-modal-body .winner {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #f0d878;
+  margin-bottom: 0.5rem;
+}
+
+.mj-win-modal-actions {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.mj-win-detail {
+  margin-top: 0.75rem;
+  text-align: left;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.mj-win-detail summary {
+  cursor: pointer;
+  color: #f0d878;
+  margin-bottom: 0.35rem;
+}
+
 .mj-payment-title {
   font-size: 0.85rem;
   font-weight: 600;
