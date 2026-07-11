@@ -89,8 +89,12 @@ function requireSocket() {
 }
 
 function selectGame(gameType) {
-  selectedGame = gameType;
   const info = GAME_INFO[gameType];
+  if (!info) {
+    showError('此遊戲尚未載入，請強制重新整理頁面（Cmd+Shift+R）');
+    return;
+  }
+  selectedGame = gameType;
   if (info.solo) {
     $('mainSubtitle').textContent = info.label;
     showPanel(panels.blockblastGame);
@@ -99,18 +103,32 @@ function selectGame(gameType) {
   }
   $('selectedGameBadge').textContent = info.label;
   $('mainSubtitle').textContent = `正在玩：${info.label}`;
+  document.querySelectorAll('.game-card').forEach((card) => {
+    card.classList.toggle('selected', card.dataset.game === gameType);
+  });
+  if (!panels.lobby) {
+    showError('頁面載入不完整，請重新整理');
+    return;
+  }
   showPanel(panels.lobby);
 }
 
 window.showGameSelect = function () {
   selectedGame = null;
   $('mainSubtitle').textContent = '選一個遊戲，跟朋友連線對戰！';
+  document.querySelectorAll('.game-card').forEach((card) => card.classList.remove('selected'));
   showPanel(panels.gameSelect);
 };
 
-document.querySelectorAll('.game-card').forEach((btn) => {
-  btn.addEventListener('click', () => selectGame(btn.dataset.game));
-});
+function bindGameCards() {
+  const container = document.querySelector('.game-cards');
+  if (!container) return;
+  container.addEventListener('click', (e) => {
+    const card = e.target.closest('.game-card');
+    if (!card?.dataset?.game) return;
+    selectGame(card.dataset.game);
+  });
+}
 
 $('btnBackToSelect').addEventListener('click', () => {
   selectedGame = null;
@@ -668,4 +686,16 @@ function submitBulls() {
   socket.emit('game:bulls-guess', { guess });
 }
 
-initSocket();
+function bootApp() {
+  bindGameCards();
+  if (!window.__APP_BOOTED__) {
+    window.__APP_BOOTED__ = true;
+    initSocket();
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootApp);
+} else {
+  bootApp();
+}

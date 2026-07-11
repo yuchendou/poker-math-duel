@@ -4,7 +4,7 @@ let mjSelectedTile = null;
 let mjState = null;
 let mjSocket = null;
 
-function $(id) {
+function mjEl(id) {
   return document.getElementById(id);
 }
 
@@ -16,13 +16,18 @@ function emitAction(action, extra = {}) {
 function bindMahjong(socket, panels, showPanel) {
   mjSocket = socket;
 
+  const bindBtn = (id, handler) => {
+    const el = mjEl(id);
+    if (el) el.addEventListener('click', handler);
+  };
+
   socket.on('game:mahjong-new-round', (state) => {
     mjState = state;
     mjSelectedTile = null;
     showPanel(panels.mahjongGame);
-    $('mjRoundResult').classList.add('hidden');
-    $('btnMahjongNext').classList.add('hidden');
-    $('mjFeedback').classList.add('hidden');
+    mjEl('mjRoundResult').classList.add('hidden');
+    mjEl('btnMahjongNext').classList.add('hidden');
+    mjEl('mjFeedback').classList.add('hidden');
     renderMahjong(state);
   });
 
@@ -36,7 +41,7 @@ function bindMahjong(socket, panels, showPanel) {
     renderMahjong(state);
     hideClaimActions();
     const info = state.winInfo || {};
-    const el = $('mjRoundResult');
+    const el = mjEl('mjRoundResult');
     el.classList.remove('hidden');
     if (state.winner === 'draw') {
       el.innerHTML = `<p>${info.message || '流局'}</p>`;
@@ -53,38 +58,38 @@ function bindMahjong(socket, panels, showPanel) {
         <p class="mj-tai-total">共 <strong>${info.tai || 0}</strong> 台</p>
       `;
     }
-    if (window.mahjongIsHost) $('btnMahjongNext').classList.remove('hidden');
+    if (window.mahjongIsHost) mjEl('btnMahjongNext').classList.remove('hidden');
   });
 
   socket.on('game:mahjong-self-win', ({ message }) => {
-    const fb = $('mjFeedback');
+    const fb = mjEl('mjFeedback');
     fb.classList.remove('hidden', 'error');
     fb.classList.add('success');
     fb.textContent = message;
   });
 
   socket.on('game:mahjong-error', ({ message }) => {
-    const fb = $('mjFeedback');
+    const fb = mjEl('mjFeedback');
     fb.classList.remove('hidden', 'success');
     fb.classList.add('error');
     fb.textContent = message;
   });
 
-  $('btnMahjongHu').addEventListener('click', () => emitAction('zimo'));
-  $('btnMahjongRon').addEventListener('click', () => emitAction('hu'));
-  $('btnMahjongPon').addEventListener('click', () => emitAction('pon'));
-  $('btnMahjongMinkong').addEventListener('click', () => emitAction('minkong'));
-  $('btnMahjongPass').addEventListener('click', () => emitAction('pass'));
-  $('btnMahjongQiang').addEventListener('click', () => emitAction('qianggang'));
-  $('btnMahjongAnkong').addEventListener('click', () => {
+  bindBtn('btnMahjongHu', () => emitAction('zimo'));
+  bindBtn('btnMahjongRon', () => emitAction('hu'));
+  bindBtn('btnMahjongPon', () => emitAction('pon'));
+  bindBtn('btnMahjongMinkong', () => emitAction('minkong'));
+  bindBtn('btnMahjongPass', () => emitAction('pass'));
+  bindBtn('btnMahjongQiang', () => emitAction('qianggang'));
+  bindBtn('btnMahjongAnkong', () => {
     const tile = mjState?.canAnkong?.[0]?.tile;
     if (tile) emitAction('ankong', { tileId: tile });
   });
-  $('btnMahjongJiagang').addEventListener('click', () => {
+  bindBtn('btnMahjongJiagang', () => {
     const jg = mjState?.canJiagang?.[0];
     if (jg) emitAction('jiagang', { tileId: jg.tile, meldIndex: jg.meldIndex });
   });
-  $('btnMahjongDiscard').addEventListener('click', () => {
+  bindBtn('btnMahjongDiscard', () => {
     if (!mjSelectedTile) return;
     mjSocket.emit('game:mahjong-discard', { tileId: mjSelectedTile });
     mjSelectedTile = null;
@@ -94,7 +99,7 @@ function bindMahjong(socket, panels, showPanel) {
 function hideClaimActions() {
   ['btnMahjongRon', 'btnMahjongPon', 'btnMahjongMinkong', 'btnMahjongPass',
     'btnMahjongQiang', 'mjChiOptions'].forEach((id) => {
-    const el = $(id);
+    const el = mjEl(id);
     if (el) el.classList.add('hidden');
   });
 }
@@ -102,22 +107,22 @@ function hideClaimActions() {
 function renderMahjong(state) {
   if (!state) return;
 
-  $('mjWallCount').textContent = state.wallCount ?? 0;
-  $('mjDealerWind').textContent = state.dealerWind || '東';
+  mjEl('mjWallCount').textContent = state.wallCount ?? 0;
+  mjEl('mjDealerWind').textContent = state.dealerWind || '東';
 
   const inClaim = state.phase === 'claim' && (state.canRon || state.canPon || state.canChi?.length);
   const inRob = state.canQianggang?.length;
   if (inClaim) {
-    $('mjTurnStatus').textContent = `有人打 ${state.claimTile || ''}，你要吃碰槓胡嗎？`;
+    mjEl('mjTurnStatus').textContent = `有人打 ${state.claimTile || ''}，你要吃碰槓胡嗎？`;
   } else if (inRob) {
-    $('mjTurnStatus').textContent = `對手加槓 ${state.robKongTile || ''}，可搶槓胡！`;
+    mjEl('mjTurnStatus').textContent = `對手加槓 ${state.robKongTile || ''}，可搶槓胡！`;
   } else if (state.canDiscard || state.canHu) {
-    $('mjTurnStatus').textContent = '🎯 輪到你了！';
+    mjEl('mjTurnStatus').textContent = '🎯 輪到你了！';
   } else {
-    $('mjTurnStatus').textContent = `⏳ 輪到 ${state.currentName}...`;
+    mjEl('mjTurnStatus').textContent = `⏳ 輪到 ${state.currentName}...`;
   }
 
-  const table = $('mjTable');
+  const table = mjEl('mjTable');
   table.innerHTML = '';
   const mySeat = state.mySeat;
   const displayOrder = [(mySeat + 2) % 4, (mySeat + 1) % 4, mySeat, (mySeat + 3) % 4];
@@ -144,7 +149,7 @@ function renderMahjong(state) {
     table.appendChild(el);
   });
 
-  const handEl = $('mjHand');
+  const handEl = mjEl('mjHand');
   handEl.innerHTML = '';
   const mySeatData = state.seats.find((s) => s.isMe);
   (mySeatData?.hand || []).forEach((tile) => {
@@ -162,18 +167,18 @@ function renderMahjong(state) {
     handEl.appendChild(btn);
   });
 
-  $('btnMahjongHu').classList.toggle('hidden', !state.canHu);
-  $('btnMahjongDiscard').disabled = !state.canDiscard || !mjSelectedTile;
+  mjEl('btnMahjongHu').classList.toggle('hidden', !state.canHu);
+  mjEl('btnMahjongDiscard').disabled = !state.canDiscard || !mjSelectedTile;
 
-  $('btnMahjongRon').classList.toggle('hidden', !state.canRon);
-  $('btnMahjongPon').classList.toggle('hidden', !state.canPon);
-  $('btnMahjongMinkong').classList.toggle('hidden', !state.canMinkong);
-  $('btnMahjongPass').classList.toggle('hidden', !(inClaim || inRob));
-  $('btnMahjongQiang').classList.toggle('hidden', !inRob);
-  $('btnMahjongAnkong').classList.toggle('hidden', !(state.canAnkong?.length));
-  $('btnMahjongJiagang').classList.toggle('hidden', !(state.canJiagang?.length));
+  mjEl('btnMahjongRon').classList.toggle('hidden', !state.canRon);
+  mjEl('btnMahjongPon').classList.toggle('hidden', !state.canPon);
+  mjEl('btnMahjongMinkong').classList.toggle('hidden', !state.canMinkong);
+  mjEl('btnMahjongPass').classList.toggle('hidden', !(inClaim || inRob));
+  mjEl('btnMahjongQiang').classList.toggle('hidden', !inRob);
+  mjEl('btnMahjongAnkong').classList.toggle('hidden', !(state.canAnkong?.length));
+  mjEl('btnMahjongJiagang').classList.toggle('hidden', !(state.canJiagang?.length));
 
-  const chiEl = $('mjChiOptions');
+  const chiEl = mjEl('mjChiOptions');
   chiEl.innerHTML = '';
   if (state.canChi?.length) {
     chiEl.classList.remove('hidden');
@@ -190,13 +195,13 @@ function renderMahjong(state) {
   }
 
   if (state.lastDraw && (state.canDiscard || state.canHu)) {
-    $('mjLastDraw').textContent = `剛摸到：${state.lastDraw}`;
-    $('mjLastDraw').classList.remove('hidden');
+    mjEl('mjLastDraw').textContent = `剛摸到：${state.lastDraw}`;
+    mjEl('mjLastDraw').classList.remove('hidden');
   } else if (state.lastDiscard && inClaim) {
-    $('mjLastDraw').textContent = `打出的牌：${state.lastDiscard}`;
-    $('mjLastDraw').classList.remove('hidden');
+    mjEl('mjLastDraw').textContent = `打出的牌：${state.lastDiscard}`;
+    mjEl('mjLastDraw').classList.remove('hidden');
   } else {
-    $('mjLastDraw').classList.add('hidden');
+    mjEl('mjLastDraw').classList.add('hidden');
   }
 }
 
