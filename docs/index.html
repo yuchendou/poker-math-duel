@@ -191,8 +191,12 @@
       <p id="mjTurnStatus" class="mj-turn-status">等待開始...</p>
       <div class="mj-table-room">
         <div class="mj-felt">
-          <div class="mj-center-deco">
+          <div class="mj-center-area">
             <span class="mj-wall-pill">牌牆 <strong id="mjWallCount">0</strong> 張</span>
+            <div id="mjDiscardPool" class="mj-discard-pool">
+              <span class="mj-pool-label">河牌</span>
+              <div id="mjDiscardTiles" class="mj-pool-tiles"></div>
+            </div>
           </div>
           <div id="mjTable" class="mj-board"></div>
         </div>
@@ -286,10 +290,10 @@
     </section>
   </main>
 
-  <script src="./config.js?v=8"></script>
+  <script src="./config.js?v=9"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
-  <script src="./blockblast.js?v=8"></script>
-  <script src="./mahjong.js?v=8"></script>
-  <script src="./app.js?v=8"></script>
+  <script src="./blockblast.js?v=9"></script>
+  <script src="./mahjong.js?v=9"></script>
+  <script src="./app.js?v=9"></script>
 </body>
 </html>

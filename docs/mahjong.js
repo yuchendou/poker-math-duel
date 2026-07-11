@@ -25,6 +25,18 @@ const DOT_LAYOUTS = {
   9: [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]],
 };
 
+/** 索子牌面：3×3 格定位竹條（與實體麻將類似） */
+const BAMBOO_LAYOUTS = {
+  2: [[0, 1], [2, 1]],
+  3: [[0, 1], [1, 1], [2, 1]],
+  4: [[0, 0], [0, 2], [2, 0], [2, 2]],
+  5: [[0, 0], [0, 2], [1, 1], [2, 0], [2, 2]],
+  6: [[0, 0], [0, 1], [0, 2], [2, 0], [2, 1], [2, 2]],
+  7: [[0, 0], [0, 2], [1, 1], [2, 0], [2, 1], [2, 2], [0, 1]],
+  8: [[0, 0], [0, 1], [0, 2], [1, 0], [1, 2], [2, 0], [2, 1], [2, 2]],
+  9: [[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]],
+};
+
 const FLOWER_ART = {
   F1: { glyph: '梅', hue: '#c2185b' },
   F2: { glyph: '蘭', hue: '#7b1fa2' },
@@ -102,17 +114,16 @@ function createBambooFace(num) {
     face.appendChild(bird);
     return face;
   }
-  const wrap = document.createElement('div');
-  wrap.className = 'mj-bamboo-wrap';
-  const cols = num <= 4 ? 1 : 2;
-  for (let i = 0; i < num; i += 1) {
+  const grid = document.createElement('div');
+  grid.className = 'mj-bamboo-grid';
+  (BAMBOO_LAYOUTS[num] || []).forEach(([r, c]) => {
     const stick = document.createElement('span');
     stick.className = 'mj-bamboo-stick';
-    stick.style.setProperty('--i', i);
-    stick.style.setProperty('--cols', cols);
-    wrap.appendChild(stick);
-  }
-  face.appendChild(wrap);
+    stick.style.setProperty('--r', r);
+    stick.style.setProperty('--c', c);
+    grid.appendChild(stick);
+  });
+  face.appendChild(grid);
   return face;
 }
 
@@ -360,6 +371,40 @@ function hideClaimActions() {
   });
 }
 
+function renderCentralDiscards(state, claimTileRef, inClaim) {
+  const pool = mjEl('mjDiscardTiles');
+  if (!pool) return;
+  pool.innerHTML = '';
+  const lastDiscardId = parseTileId(state.lastDiscard);
+  const discardSeat = state.discardSeat;
+  let hasAny = false;
+
+  state.seats.forEach((seat) => {
+    (seat.discards || []).forEach((tile, idx) => {
+      hasAny = true;
+      const isClaimTarget = inClaim
+        && lastDiscardId
+        && parseTileId(tile) === lastDiscardId
+        && idx === seat.discards.length - 1
+        && (discardSeat == null || discardSeat === seat.seatIndex);
+      const el = createMjTile(tile, {
+        size: 'xs',
+        highlight: isClaimTarget,
+        title: `${seat.wind}家打`,
+      });
+      el.classList.add(`mj-discard-from-${seat.seatIndex}`);
+      pool.appendChild(el);
+    });
+  });
+
+  if (!hasAny) {
+    const empty = document.createElement('span');
+    empty.className = 'mj-pool-empty';
+    empty.textContent = '尚無出牌';
+    pool.appendChild(empty);
+  }
+}
+
 function renderLastDrawTile(container, ref, prefix) {
   container.innerHTML = '';
   if (!ref) {
@@ -442,29 +487,10 @@ function renderMahjong(state) {
       el.appendChild(melds);
     }
 
-    const discards = document.createElement('div');
-    discards.className = 'mj-discards';
-    const discardLabel = document.createElement('span');
-    discardLabel.className = 'mj-zone-label';
-    discardLabel.textContent = '河';
-    discards.appendChild(discardLabel);
-    if (seat.discards?.length) {
-      const recent = seat.discards.slice(-12);
-      appendTileRow(discards, recent, { size: 'xs' });
-      const last = recent[recent.length - 1];
-      if (inClaim && claimTileRef && tileLabel(last) === tileLabel(claimTileRef)) {
-        const lastTile = discards.querySelector('.mj-tile:last-child');
-        if (lastTile) lastTile.classList.add('highlight');
-      }
-    } else {
-      const empty = document.createElement('span');
-      empty.className = 'mj-empty-hint';
-      empty.textContent = '尚無出牌';
-      discards.appendChild(empty);
-    }
-    el.appendChild(discards);
     table.appendChild(el);
   });
+
+  renderCentralDiscards(state, claimTileRef, inClaim);
 
   const myTable = mjEl('mjMyTable');
   myTable.innerHTML = '';
@@ -491,13 +517,6 @@ function renderMahjong(state) {
         }
       });
       myTable.appendChild(melds);
-    }
-    if (mySeatData.discards?.length) {
-      const discards = document.createElement('div');
-      discards.className = 'mj-my-zone';
-      discards.innerHTML = '<span class="mj-zone-label">河底</span>';
-      appendTileRow(discards, mySeatData.discards.slice(-14), { size: 'xs' });
-      myTable.appendChild(discards);
     }
   }
 

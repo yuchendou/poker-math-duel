@@ -1010,6 +1010,7 @@ def build_client_view(rnd, viewer_sid):
         "robKongTile": tile_obj(rob["tile"]) if rob and not rob.get("resolved") else None,
         "lastDraw": tile_obj(rnd["lastDraw"]) if rnd.get("lastDraw") else None,
         "lastDiscard": tile_obj(rnd["lastDiscard"]) if rnd.get("lastDiscard") else None,
+        "discardSeat": rnd.get("discardSeat"),
         "winner": rnd.get("winner"),
         "winInfo": rnd.get("winInfo"),
     }
