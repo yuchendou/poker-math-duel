@@ -1,12 +1,13 @@
-"""台灣麻將簡化版：16 張手牌、花牌、自摸胡、基本台數。"""
+"""台灣麻將完整規則：吃碰槓、搶槓、胡牌、完整台數。"""
 
 import random
 from collections import Counter
 
-# 萬 M1-9、筒 P1-9、索 S1-9、字 Z1-7、花 F1-8
 SUITS_NUM = ("M", "P", "S")
-HONORS = ("Z1", "Z2", "Z3", "Z4", "Z5", "Z6", "Z7")  # 東南西北中發白
-FLOWERS = ("F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8")  # 梅蘭竹菊春夏秋冬
+HONORS = ("Z1", "Z2", "Z3", "Z4", "Z5", "Z6", "Z7")
+FLOWERS = ("F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8")
+DRAGONS = ("Z5", "Z6", "Z7")
+WINDS = ("Z1", "Z2", "Z3", "Z4")
 
 TILE_LABELS = {
     **{f"M{i}": f"{i}萬" for i in range(1, 10)},
@@ -19,14 +20,7 @@ TILE_LABELS = {
 }
 
 WIND_NAMES = ("東", "南", "西", "北")
-# 各風位正花
-SEAT_FLOWERS = {
-    0: ("F5", "F1"),  # 東：春、梅
-    1: ("F6", "F2"),  # 南：夏、蘭
-    2: ("F7", "F3"),  # 西：秋、竹
-    3: ("F8", "F4"),  # 北：冬、菊
-}
-
+SEAT_FLOWERS = {0: ("F5", "F1"), 1: ("F6", "F2"), 2: ("F7", "F3"), 3: ("F8", "F4")}
 AI_NAMES = ("電腦西", "電腦北")
 
 
@@ -49,13 +43,17 @@ def is_flower(tile):
 
 def tile_sort_key(tile):
     order = {"M": 0, "P": 1, "S": 2, "Z": 3, "F": 4}
-    if tile[0] in order:
+    if tile and tile[0] in order:
         return (order[tile[0]], int(tile[1:]))
     return (9, 0)
 
 
 def sort_tiles(tiles):
     return sorted(tiles, key=tile_sort_key)
+
+
+def next_seat(idx):
+    return (idx + 1) % 4
 
 
 def _can_form_melds(counts):
@@ -72,8 +70,7 @@ def _can_form_melds(counts):
     if first[0] in SUITS_NUM:
         n = int(first[1])
         if n <= 7:
-            t2 = f"{first[0]}{n + 1}"
-            t3 = f"{first[0]}{n + 2}"
+            t2, t3 = f"{first[0]}{n + 1}", f"{first[0]}{n + 2}"
             if counts.get(t2, 0) > 0 and counts.get(t3, 0) > 0:
                 c = counts.copy()
                 c[first] -= 1
@@ -87,8 +84,7 @@ def _can_form_melds(counts):
     return False
 
 
-def can_win(tiles):
-    """標準胡牌：5 面子 + 1 將（不含花牌）。"""
+def can_win_tiles(tiles):
     if len(tiles) % 3 != 2:
         return False
     counts = Counter(tiles)
@@ -103,11 +99,36 @@ def can_win(tiles):
     return False
 
 
-def draw_from_wall(wall, seat):
-    """摸牌並處理花牌補牌。回傳最後摸到的非花牌或 None。"""
+def all_tiles_for_win(hand, melds, extra=None):
+    tiles = list(hand)
+    if extra:
+        tiles.append(extra)
+    for m in melds:
+        if m["type"] == "chi":
+            tiles.extend(m["tiles"])
+        elif m["type"] in ("pon", "minkong", "jiagang", "ankong"):
+            n = 4 if m["type"] in ("minkong", "jiagong", "ankong") else 3
+            tiles.extend([m["tile"]] * n)
+    return tiles
+
+
+def can_win(hand, melds, extra=None):
+    return can_win_tiles(all_tiles_for_win(hand, melds, extra))
+
+
+def is_menqing(melds):
+    return not any(m["type"] in ("chi", "pon", "minkong") for m in melds)
+
+
+def draw_from_wall(rnd, seat):
+    wall = rnd["wall"]
+    if not wall:
+        return None
     last = None
+    use_tail = rnd.get("drawFromTail", False)
+    rnd["drawFromTail"] = False
     while wall:
-        tile = wall.pop()
+        tile = wall.pop() if not use_tail else wall.pop(0)
         if is_flower(tile):
             seat["flowers"].append(tile)
             continue
@@ -115,6 +136,7 @@ def draw_from_wall(wall, seat):
         last = tile
         break
     seat["hand"] = sort_tiles(seat["hand"])
+    rnd["lastDraw"] = last
     return last
 
 
@@ -123,41 +145,469 @@ def deal_initial(wall, seats, dealer):
         seat["hand"] = []
         seat["flowers"] = []
         seat["discards"] = []
+        seat["melds"] = []
+    rnd_stub = {"wall": wall}
     for _ in range(16):
         for seat in seats:
-            draw_from_wall(wall, seat)
-    # 莊家多摸一張
-    draw_from_wall(wall, seats[dealer])
+            draw_from_wall(rnd_stub, seat)
+    draw_from_wall(rnd_stub, seats[dealer])
     return wall
 
 
-def calc_tai(seat, dealer_seat, zimo):
-    tai = 1  # 底台
-    items = ["底台 1 台"]
-    if seat["seatIndex"] == dealer_seat:
-        tai += 1
-        items.append("莊家 1 台")
-    if zimo:
-        tai += 1
-        items.append("自摸 1 台")
-    if not seat.get("melds"):
-        tai += 1
-        items.append("門清 1 台")
-    wind = seat["seatIndex"]
-    for flower in seat["flowers"]:
-        if flower in SEAT_FLOWERS[wind]:
-            tai += 1
-            items.append(f"正花 {TILE_LABELS[flower]} 1 台")
-        else:
-            tai += 1
-            items.append(f"花牌 {TILE_LABELS[flower]} 1 台")
-    items.append("平胡 1 台")
-    tai += 1
-    return tai, items
+def create_seats(human_players):
+    seats = []
+    for i, p in enumerate(human_players):
+        seats.append({
+            "id": p["id"], "name": p["name"], "isAI": False,
+            "seatIndex": i, "hand": [], "flowers": [], "discards": [], "melds": [],
+        })
+    for j, ai_name in enumerate(AI_NAMES):
+        idx = len(human_players) + j
+        seats.append({
+            "id": f"ai-{idx}", "name": ai_name, "isAI": True,
+            "seatIndex": idx, "hand": [], "flowers": [], "discards": [], "melds": [],
+        })
+    return seats
+
+
+def start_round(human_players, dealer_streak=0):
+    dealer = random.randint(0, 3)
+    seats = create_seats(human_players)
+    wall = create_wall()
+    wall = deal_initial(wall, seats, dealer)
+    return {
+        "seats": seats,
+        "wall": wall,
+        "dealer": dealer,
+        "dealerStreak": dealer_streak,
+        "currentSeat": dealer,
+        "phase": "discard",
+        "lastDraw": None,
+        "lastDiscard": None,
+        "discardSeat": None,
+        "claim": None,
+        "robKong": None,
+        "drawFromTail": False,
+        "winFlags": {},
+        "winner": None,
+        "winInfo": None,
+        "discardCount": 0,
+    }
+
+
+def seat_by_id(rnd, sid):
+    for s in rnd["seats"]:
+        if s["id"] == sid:
+            return s
+    return None
+
+
+def seat_at(rnd, idx):
+    return rnd["seats"][idx]
+
+
+def meld_label(m):
+    t = TILE_LABELS.get(m.get("tile") or m["tiles"][0], "")
+    kind = {"chi": "吃", "pon": "碰", "minkong": "明槓", "ankong": "暗槓", "jiagang": "加槓"}[m["type"]]
+    if m["type"] == "chi":
+        return f"{kind}{''.join(TILE_LABELS[x] for x in m['tiles'])}"
+    return f"{kind}{t}"
+
+
+def _chi_options(hand, tile):
+    if tile[0] not in SUITS_NUM:
+        return []
+    n = int(tile[1])
+    opts = []
+    if n >= 3:
+        a, b = f"{tile[0]}{n - 2}", f"{tile[0]}{n - 1}"
+        if a in hand and b in hand:
+            opts.append(sort_tiles([a, b, tile]))
+    if 2 <= n <= 8:
+        a, b = f"{tile[0]}{n - 1}", f"{tile[0]}{n + 1}"
+        if a in hand and b in hand:
+            opts.append(sort_tiles([a, tile, b]))
+    if n <= 7:
+        a, b = f"{tile[0]}{n + 1}", f"{tile[0]}{n + 2}"
+        if a in hand and b in hand:
+            opts.append(sort_tiles([tile, a, b]))
+    return opts
+
+
+def get_claim_options(rnd, seat_idx):
+    claim = rnd.get("claim")
+    if not claim:
+        return []
+    tile, from_seat = claim["tile"], claim["fromSeat"]
+    if seat_idx == from_seat:
+        return []
+    seat = seat_at(rnd, seat_idx)
+    opts = []
+    if can_win(seat["hand"], seat["melds"], tile):
+        opts.append({"action": "hu", "tile": tile})
+    if seat["hand"].count(tile) >= 2:
+        opts.append({"action": "pon", "tile": tile})
+    if seat["hand"].count(tile) >= 3:
+        opts.append({"action": "minkong", "tile": tile})
+    if next_seat(from_seat) == seat_idx:
+        for chi_tiles in _chi_options(seat["hand"], tile):
+            opts.append({"action": "chi", "tiles": chi_tiles, "tile": tile})
+    return opts
+
+
+def get_rob_kong_options(rnd, seat_idx):
+    rk = rnd.get("robKong")
+    if not rk or rk.get("resolved"):
+        return []
+    if seat_idx == rk["seat"]:
+        return []
+    seat = seat_at(rnd, seat_idx)
+    tile = rk["tile"]
+    if can_win(seat["hand"], seat["melds"], tile):
+        return [{"action": "qianggang", "tile": tile}]
+    return []
+
+
+def get_self_actions(rnd, seat_idx):
+    seat = seat_at(rnd, seat_idx)
+    acts = []
+    if rnd["phase"] != "discard" or rnd["currentSeat"] != seat_idx:
+        return acts
+    if can_win(seat["hand"], seat["melds"]):
+        acts.append({"action": "zimo"})
+    for t in set(seat["hand"]):
+        if seat["hand"].count(t) == 4:
+            acts.append({"action": "ankong", "tile": t})
+    for i, m in enumerate(seat["melds"]):
+        if m["type"] == "pon" and seat["hand"].count(m["tile"]) >= 1:
+            acts.append({"action": "jiagang", "tile": m["tile"], "meldIndex": i})
+    return acts
+
+
+def open_claim_window(rnd, tile, from_seat):
+    rnd["claim"] = {
+        "tile": tile,
+        "fromSeat": from_seat,
+        "responses": {},
+    }
+    rnd["phase"] = "claim"
+    rnd["lastDiscard"] = tile
+
+
+def _remove_discard(rnd, from_seat, tile):
+    disc = rnd["seats"][from_seat]["discards"]
+    if disc and disc[-1] == tile:
+        disc.pop()
+
+
+def apply_chi(rnd, seat_idx, tiles):
+    claim = rnd["claim"]
+    tile = claim["tile"]
+    from_seat = claim["fromSeat"]
+    if next_seat(from_seat) != seat_idx:
+        return False, "只有下家可以吃"
+    seat = seat_at(rnd, seat_idx)
+    for t in tiles:
+        if t != tile and t not in seat["hand"]:
+            return False, "手牌不足以吃"
+    for t in tiles:
+        if t != tile:
+            seat["hand"].remove(t)
+    _remove_discard(rnd, from_seat, tile)
+    seat["melds"].append({"type": "chi", "tiles": sort_tiles(tiles), "from": from_seat})
+    seat["hand"] = sort_tiles(seat["hand"])
+    rnd["claim"] = None
+    rnd["currentSeat"] = seat_idx
+    rnd["phase"] = "discard"
+    rnd["lastDiscard"] = None
+    return True, ""
+
+
+def apply_pon(rnd, seat_idx, tile):
+    seat = seat_at(rnd, seat_idx)
+    if seat["hand"].count(tile) < 2:
+        return False, "無法碰"
+    from_seat = rnd["claim"]["fromSeat"]
+    _remove_discard(rnd, from_seat, tile)
+    seat["hand"].remove(tile)
+    seat["hand"].remove(tile)
+    seat["melds"].append({"type": "pon", "tile": tile, "from": from_seat})
+    seat["hand"] = sort_tiles(seat["hand"])
+    rnd["claim"] = None
+    rnd["currentSeat"] = seat_idx
+    rnd["phase"] = "discard"
+    rnd["lastDiscard"] = None
+    return True, ""
+
+
+def apply_minkong_from_claim(rnd, seat_idx, tile):
+    seat = seat_at(rnd, seat_idx)
+    if seat["hand"].count(tile) < 3:
+        return False, "無法明槓"
+    from_seat = rnd["claim"]["fromSeat"]
+    _remove_discard(rnd, from_seat, tile)
+    for _ in range(3):
+        seat["hand"].remove(tile)
+    seat["melds"].append({"type": "minkong", "tile": tile, "from": from_seat})
+    seat["hand"] = sort_tiles(seat["hand"])
+    rnd["claim"] = None
+    rnd["currentSeat"] = seat_idx
+    rnd["winFlags"] = {"gangShang": True}
+    rnd["drawFromTail"] = True
+    rnd["phase"] = "draw"
+    return True, ""
+
+
+def apply_ankong(rnd, seat_idx, tile):
+    seat = seat_at(rnd, seat_idx)
+    if seat["hand"].count(tile) < 4:
+        return False, "無法暗槓"
+    for _ in range(4):
+        seat["hand"].remove(tile)
+    seat["melds"].append({"type": "ankong", "tile": tile})
+    seat["hand"] = sort_tiles(seat["hand"])
+    rnd["winFlags"] = {"gangShang": True}
+    rnd["drawFromTail"] = True
+    rnd["phase"] = "draw"
+    rnd["currentSeat"] = seat_idx
+    return True, ""
+
+
+def start_jiagang(rnd, seat_idx, tile, meld_index):
+    seat = seat_at(rnd, seat_idx)
+    m = seat["melds"][meld_index]
+    if m["type"] != "pon" or m["tile"] != tile:
+        return False, "無法加槓"
+    if tile not in seat["hand"]:
+        return False, "手牌沒有這張牌"
+    rnd["robKong"] = {"seat": seat_idx, "tile": tile, "meldIndex": meld_index, "resolved": False}
+    rnd["phase"] = "rob_kong"
+    return True, ""
+
+
+def complete_jiagang(rnd):
+    rk = rnd["robKong"]
+    seat = seat_at(rnd, rk["seat"])
+    tile = rk["tile"]
+    seat["hand"].remove(tile)
+    m = seat["melds"][rk["meldIndex"]]
+    m["type"] = "jiagang"
+    rnd["robKong"] = None
+    rnd["winFlags"] = {"gangShang": True}
+    rnd["drawFromTail"] = True
+    rnd["phase"] = "draw"
+    rnd["currentSeat"] = rk["seat"]
+
+
+def apply_ron(rnd, seat_idx, tile, qianggang=False):
+    rnd["winFlags"] = rnd.get("winFlags") or {}
+    if qianggang:
+        rnd["winFlags"]["qiangGang"] = True
+    else:
+        if len(rnd["wall"]) == 0:
+            rnd["winFlags"]["heDi"] = True
+    rnd["winnerSeat"] = seat_idx
+    rnd["winTile"] = tile
+    rnd["winType"] = "qianggang" if qianggang else "ron"
+    rnd["claim"] = None
+    rnd["robKong"] = None
+    rnd["phase"] = "ended"
+    return True
+
+
+def apply_zimo(rnd, seat_idx):
+    rnd["winFlags"] = rnd.get("winFlags") or {}
+    if not rnd["wall"]:
+        rnd["winFlags"]["haiDi"] = True
+    rnd["winnerSeat"] = seat_idx
+    rnd["winType"] = "zimo"
+    rnd["phase"] = "ended"
+    return True
+
+
+def apply_discard(rnd, seat_idx, tile):
+    seat = seat_at(rnd, seat_idx)
+    if tile not in seat["hand"]:
+        return False, "手牌中沒有這張牌"
+    seat["hand"].remove(tile)
+    seat["discards"].append(tile)
+    rnd["discardSeat"] = seat_idx
+    rnd["lastDraw"] = None
+    rnd["discardCount"] = rnd.get("discardCount", 0) + 1
+    if not rnd["wall"] and len(seat["hand"]) == 0:
+        pass
+    open_claim_window(rnd, tile, seat_idx)
+    return True, ""
+
+
+def apply_pass_claim(rnd, seat_idx):
+    if not rnd.get("claim"):
+        return
+    rnd["claim"]["responses"][seat_idx] = "pass"
+
+
+def apply_pass_rob_kong(rnd, seat_idx):
+    rk = rnd.get("robKong")
+    if not rk:
+        return
+    rk["responses"] = rk.get("responses") or {}
+    rk["responses"][seat_idx] = "pass"
+
+
+def _claim_priority_order(from_seat):
+    return [next_seat(from_seat), (from_seat + 2) % 4, (from_seat + 3) % 4]
+
+
+def resolve_claims(rnd):
+    claim = rnd.get("claim")
+    if not claim:
+        return "none"
+    tile, from_seat = claim["tile"], claim["fromSeat"]
+    order = _claim_priority_order(from_seat)
+
+    for seat_idx in order:
+        resp = claim["responses"].get(seat_idx)
+        if resp and resp != "pass" and resp.get("action") == "hu":
+            apply_ron(rnd, seat_idx, tile)
+            return "win"
+
+    for seat_idx in order:
+        resp = claim["responses"].get(seat_idx)
+        if resp and resp != "pass":
+            if resp.get("action") == "minkong":
+                apply_minkong_from_claim(rnd, seat_idx, tile)
+                return "kong"
+            if resp.get("action") == "pon":
+                apply_pon(rnd, seat_idx, tile)
+                return "meld"
+
+    chi_seat = next_seat(from_seat)
+    resp = claim["responses"].get(chi_seat)
+    if resp and resp != "pass" and resp.get("action") == "chi":
+        apply_chi(rnd, chi_seat, resp["tiles"])
+        return "meld"
+
+    rnd["claim"] = None
+    rnd["currentSeat"] = next_seat(from_seat)
+    rnd["phase"] = "draw"
+    rnd["lastDiscard"] = None
+    return "draw"
+
+
+def resolve_rob_kong(rnd):
+    rk = rnd.get("robKong")
+    if not rk or rk.get("resolved"):
+        return "none"
+    order = [i for i in range(4) if i != rk["seat"]]
+    for seat_idx in order:
+        resp = (rk.get("responses") or {}).get(seat_idx)
+        if resp and resp != "pass" and resp.get("action") == "qianggang":
+            apply_ron(rnd, seat_idx, rk["tile"], qianggang=True)
+            rk["resolved"] = True
+            return "win"
+    complete_jiagang(rnd)
+    return "kong"
+
+
+def all_claims_passed(rnd):
+    claim = rnd.get("claim")
+    if not claim:
+        return True
+    from_seat = claim["fromSeat"]
+    for i in range(4):
+        if i == from_seat:
+            continue
+        opts = get_claim_options(rnd, i)
+        if not opts:
+            continue
+        if i not in claim["responses"]:
+            return False
+    return True
+
+
+def all_rob_passed(rnd):
+    rk = rnd.get("robKong")
+    if not rk:
+        return True
+    for i in range(4):
+        if i == rk["seat"]:
+            continue
+        if get_rob_kong_options(rnd, i) and i not in (rk.get("responses") or {}):
+            return False
+    return True
+
+
+def pending_human_seats(rnd):
+    pending = []
+    if rnd["phase"] == "claim" and rnd.get("claim"):
+        for i in range(4):
+            seat = seat_at(rnd, i)
+            if seat["isAI"]:
+                continue
+            if get_claim_options(rnd, i) and i not in rnd["claim"]["responses"]:
+                pending.append(i)
+    elif rnd["phase"] == "rob_kong" and rnd.get("robKong"):
+        for i in range(4):
+            seat = seat_at(rnd, i)
+            if seat["isAI"]:
+                continue
+            if get_rob_kong_options(rnd, i) and i not in rnd["robKong"].get("responses", {}):
+                pending.append(i)
+    elif rnd["phase"] == "discard" and rnd["currentSeat"] is not None:
+        seat = seat_at(rnd, rnd["currentSeat"])
+        if not seat["isAI"]:
+            pending.append(rnd["currentSeat"])
+    return pending
+
+
+def ai_auto_respond_claims(rnd):
+    claim = rnd.get("claim")
+    if not claim:
+        return
+    from_seat = claim["fromSeat"]
+    order = _claim_priority_order(from_seat)
+    for seat_idx in order:
+        seat = seat_at(rnd, seat_idx)
+        if not seat["isAI"]:
+            continue
+        opts = get_claim_options(rnd, seat_idx)
+        if not opts:
+            continue
+        hu = next((o for o in opts if o["action"] == "hu"), None)
+        if hu:
+            claim["responses"][seat_idx] = hu
+            return
+        pon = next((o for o in opts if o["action"] == "pon"), None)
+        if pon and random.random() < 0.55:
+            claim["responses"][seat_idx] = pon
+            return
+        claim["responses"][seat_idx] = "pass"
+    chi_seat = next_seat(from_seat)
+    seat = seat_at(rnd, chi_seat)
+    if seat["isAI"]:
+        chi_opts = [o for o in get_claim_options(rnd, chi_seat) if o["action"] == "chi"]
+        if chi_opts and random.random() < 0.35:
+            claim["responses"][chi_seat] = chi_opts[0]
+        elif get_claim_options(rnd, chi_seat):
+            claim["responses"][chi_seat] = "pass"
+
+
+def ai_auto_respond_rob_kong(rnd):
+    rk = rnd.get("robKong")
+    if not rk:
+        return
+    for i in range(4):
+        seat = seat_at(rnd, i)
+        if not seat["isAI"] or i == rk["seat"]:
+            continue
+        opts = get_rob_kong_options(rnd, i)
+        if opts:
+            rk.setdefault("responses", {})[i] = {"action": "qianggang", "tile": rk["tile"]}
+            return
+        rk.setdefault("responses", {})[i] = "pass"
 
 
 def ai_choose_discard(seat):
-    """簡單 AI：優先打字牌，否則打最大孤立牌。"""
     hand = seat["hand"]
     if not hand:
         return None
@@ -171,75 +621,193 @@ def ai_choose_discard(seat):
     return hand[-1]
 
 
-def create_seats(human_players):
-    """human_players: [{id, name}, ...] 最多 2 人，補 2 AI。"""
-    seats = []
-    for i, p in enumerate(human_players):
-        seats.append({
-            "id": p["id"],
-            "name": p["name"],
-            "isAI": False,
-            "seatIndex": i,
-            "hand": [],
-            "flowers": [],
-            "discards": [],
-            "melds": [],
-        })
-    for j, ai_name in enumerate(AI_NAMES):
-        idx = len(human_players) + j
-        seats.append({
-            "id": f"ai-{idx}",
-            "name": ai_name,
-            "isAI": True,
-            "seatIndex": idx,
-            "hand": [],
-            "flowers": [],
-            "discards": [],
-            "melds": [],
-        })
-    return seats
-
-
-def start_round(human_players):
-    dealer = random.randint(0, 3)
-    seats = create_seats(human_players)
-    wall = create_wall()
-    wall = deal_initial(wall, seats, dealer)
-    return {
-        "seats": seats,
-        "wall": wall,
-        "dealer": dealer,
-        "currentSeat": dealer,
-        "phase": "discard",
-        "lastDraw": None,
-        "winner": None,
-        "winInfo": None,
-        "zimo": False,
-    }
-
-
-def seat_by_id(round_state, sid):
-    for s in round_state["seats"]:
-        if s["id"] == sid:
-            return s
+def ai_take_self_action(rnd, seat_idx):
+    acts = get_self_actions(rnd, seat_idx)
+    zimo = next((a for a in acts if a["action"] == "zimo"), None)
+    if zimo:
+        return zimo
+    ank = next((a for a in acts if a["action"] == "ankong"), None)
+    if ank and random.random() < 0.15:
+        return ank
     return None
 
 
-def seat_index_by_id(round_state, sid):
-    for i, s in enumerate(round_state["seats"]):
-        if s["id"] == sid:
-            return i
-    return -1
+# ── 台數計算 ──────────────────────────────────────────
+
+def _hand_stats(hand, melds, extra=None):
+    tiles = all_tiles_for_win(hand, melds, extra)
+    suits = {t[0] for t in tiles if t[0] in SUITS_NUM}
+    honors = [t for t in tiles if t.startswith("Z")]
+    nums = [t for t in tiles if t[0] in SUITS_NUM]
+    only_honors = len(nums) == 0 and len(honors) > 0
+    only_nums = len(honors) == 0 and len(nums) > 0
+    one_suit_honor = len(suits) == 1 and honors
+    one_suit = len(suits) == 1 and not honors
+    dragons = sum(1 for t in tiles if t in DRAGONS)
+    winds = sum(1 for t in tiles if t in WINDS)
+    return {
+        "tiles": tiles,
+        "only_honors": only_honors,
+        "one_suit": one_suit,
+        "one_suit_honor": one_suit_honor,
+        "dragons": dragons,
+        "winds": winds,
+    }
 
 
-def build_client_view(round_state, viewer_sid):
-    viewer_seat = seat_by_id(round_state, viewer_sid)
-    my_index = viewer_seat["seatIndex"] if viewer_seat else -1
-    current = round_state["currentSeat"]
-    phase = round_state["phase"]
+def _can_form_triplets_only(counts):
+    if not counts:
+        return True
+    first = min(counts.keys(), key=tile_sort_key)
+    if counts[first] >= 3:
+        c = counts.copy()
+        c[first] -= 3
+        if c[first] == 0:
+            del c[first]
+        if _can_form_triplets_only(c):
+            return True
+    return False
+
+
+def _is_all_triplets(hand, melds, extra=None):
+    if any(m["type"] == "chi" for m in melds):
+        return False
+    tiles = list(hand)
+    if extra:
+        tiles.append(extra)
+    for m in melds:
+        if m["type"] in ("pon", "minkong", "jiagong", "ankong"):
+            n = 3 if m["type"] == "pon" else 4
+            tiles.extend([m["tile"]] * n)
+    counts = Counter(tiles)
+    for pair in list(counts.keys()):
+        if counts[pair] >= 2:
+            c = counts.copy()
+            c[pair] -= 2
+            if c[pair] == 0:
+                del c[pair]
+            if _can_form_triplets_only(c):
+                return True
+    return False
+
+
+def _count_concealed_pungs(hand, melds):
+    n = sum(1 for m in melds if m["type"] == "ankong")
+    counts = Counter(hand)
+    for t, c in list(counts.items()):
+        if c >= 3:
+            n += 1
+    return min(n, 5)
+
+
+def _dragon_wind_tai(hand, melds, extra):
+    tiles = all_tiles_for_win(hand, melds, extra)
+    c = Counter(tiles)
+    d_trips = sum(1 for t in DRAGONS if c[t] >= 3)
+    w_trips = sum(1 for t in WINDS if c[t] >= 3)
+    d_pairs = sum(1 for t in DRAGONS if c[t] == 2)
+    w_pairs = sum(1 for t in WINDS if c[t] == 2)
+    items = []
+    tai = 0
+    if d_trips == 3:
+        tai += 8
+        items.append("大三元 8 台")
+    elif d_trips == 2 and d_pairs == 1:
+        tai += 4
+        items.append("小三元 4 台")
+    if w_trips == 4:
+        tai += 16
+        items.append("大四喜 16 台")
+    elif w_trips == 3 and w_pairs == 1:
+        tai += 8
+        items.append("小四喜 8 台")
+    return tai, items
+
+
+def calc_tai(seat, rnd, win_type="zimo", extra_tile=None):
+    items = []
+    tai = 0
+
+    def add(n, name):
+        nonlocal tai
+        tai += n
+        items.append(f"{name} {n} 台")
+
+    add(1, "底台")
+    add(1, "平胡")
+
+    if seat["seatIndex"] == rnd["dealer"]:
+        add(1, "莊家")
+    streak = rnd.get("dealerStreak", 0)
+    if streak > 0 and seat["seatIndex"] == rnd["dealer"]:
+        add(streak, f"連莊×{streak}")
+
+    if win_type == "zimo":
+        add(1, "自摸")
+    if is_menqing(seat["melds"]):
+        add(1, "門清")
+    if not seat["flowers"]:
+        add(1, "不求")
+
+    for f in seat["flowers"]:
+        add(1, f"花牌{TILE_LABELS[f]}")
+        if f in SEAT_FLOWERS[seat["seatIndex"]]:
+            add(1, f"正花{TILE_LABELS[f]}")
+    if len(seat["flowers"]) >= 8:
+        add(8, "八仙過海")
+
+    for m in seat["melds"]:
+        if m["type"] == "minkong":
+            add(1, f"明槓{TILE_LABELS[m['tile']]}")
+        elif m["type"] == "ankong":
+            add(2, f"暗槓{TILE_LABELS[m['tile']]}")
+        elif m["type"] == "jiagong":
+            add(1, f"加槓{TILE_LABELS[m['tile']]}")
+
+    flags = rnd.get("winFlags") or {}
+    if flags.get("gangShang"):
+        add(1, "槓上開花")
+    if flags.get("qiangGang"):
+        add(1, "搶槓")
+    if flags.get("haiDi"):
+        add(1, "海底撈月")
+    if flags.get("heDi"):
+        add(1, "河底撈魚")
+
+    stats = _hand_stats(seat["hand"], seat["melds"], extra_tile)
+    if stats["only_honors"]:
+        add(16, "字一色")
+    elif stats["one_suit"]:
+        add(8, "清一色")
+    elif stats["one_suit_honor"]:
+        add(4, "混一色")
+
+    if _is_all_triplets(seat["hand"], seat["melds"], extra_tile):
+        add(4, "碰碰胡")
+
+    dt, di = _dragon_wind_tai(seat["hand"], seat["melds"], extra_tile)
+    tai += dt
+    items.extend(di)
+
+    concealed = _count_concealed_pungs(seat["hand"], seat["melds"])
+    if concealed >= 5:
+        add(8, "五暗刻")
+    elif concealed == 4:
+        add(5, "四暗刻")
+    elif concealed == 3:
+        add(2, "三暗刻")
+
+    return tai, items
+
+
+def build_client_view(rnd, viewer_sid):
+    viewer = seat_by_id(rnd, viewer_sid)
+    my_idx = viewer["seatIndex"] if viewer else -1
+    claim = rnd.get("claim")
+    rob = rnd.get("robKong")
 
     seats_view = []
-    for s in round_state["seats"]:
+    for s in rnd["seats"]:
         is_me = s["id"] == viewer_sid
         seats_view.append({
             "id": s["id"],
@@ -251,55 +819,176 @@ def build_client_view(round_state, viewer_sid):
             "handCount": len(s["hand"]),
             "flowers": [TILE_LABELS[f] for f in s["flowers"]],
             "discards": [TILE_LABELS[t] for t in s["discards"]],
+            "melds": [meld_label(m) for m in s["melds"]],
             "hand": [{"id": t, "label": TILE_LABELS[t]} for t in s["hand"]] if is_me else None,
         })
 
-    can_act = (
-        viewer_seat
-        and not viewer_seat["isAI"]
-        and viewer_seat["seatIndex"] == current
-        and round_state["winner"] is None
+    my_claim_opts = get_claim_options(rnd, my_idx) if my_idx >= 0 else []
+    my_rob_opts = get_rob_kong_options(rnd, my_idx) if my_idx >= 0 else []
+    my_self = get_self_actions(rnd, my_idx) if my_idx >= 0 else []
+
+    def _fmt_chi(opt):
+        return "".join(TILE_LABELS[t] for t in opt["tiles"])
+
+    can_discard = (
+        rnd["phase"] == "discard"
+        and rnd["currentSeat"] == my_idx
+        and not rnd.get("winner")
+        and not rob
     )
-    can_hu = can_act and phase == "discard" and can_win(viewer_seat["hand"])
 
     return {
-        "dealer": round_state["dealer"],
-        "dealerWind": WIND_NAMES[round_state["dealer"]],
-        "currentSeat": current,
-        "currentName": round_state["seats"][current]["name"],
-        "phase": phase,
-        "wallCount": len(round_state["wall"]),
+        "dealer": rnd["dealer"],
+        "dealerWind": WIND_NAMES[rnd["dealer"]],
+        "currentSeat": rnd["currentSeat"],
+        "currentName": rnd["seats"][rnd["currentSeat"]]["name"] if rnd["currentSeat"] is not None else "",
+        "phase": rnd["phase"],
+        "wallCount": len(rnd["wall"]),
         "seats": seats_view,
-        "mySeat": my_index,
-        "canDiscard": can_act and phase == "discard",
-        "canHu": can_hu,
-        "lastDraw": TILE_LABELS[round_state["lastDraw"]] if round_state.get("lastDraw") else None,
-        "winner": round_state.get("winner"),
-        "winInfo": round_state.get("winInfo"),
+        "mySeat": my_idx,
+        "canDiscard": can_discard,
+        "canHu": any(a["action"] in ("zimo",) for a in my_self),
+        "canRon": any(a["action"] == "hu" for a in my_claim_opts),
+        "canPon": any(a["action"] == "pon" for a in my_claim_opts),
+        "canChi": [{"tiles": a["tiles"], "label": _fmt_chi(a)} for a in my_claim_opts if a["action"] == "chi"],
+        "canMinkong": any(a["action"] == "minkong" for a in my_claim_opts),
+        "canAnkong": [{"tile": a["tile"], "label": TILE_LABELS[a["tile"]]} for a in my_self if a["action"] == "ankong"],
+        "canJiagang": [
+            {"tile": a["tile"], "meldIndex": a["meldIndex"], "label": TILE_LABELS[a["tile"]]}
+            for a in my_self if a["action"] == "jiagang"
+        ],
+        "canQianggang": my_rob_opts,
+        "claimTile": TILE_LABELS[claim["tile"]] if claim else None,
+        "robKongTile": TILE_LABELS[rob["tile"]] if rob and not rob.get("resolved") else None,
+        "lastDraw": TILE_LABELS[rnd["lastDraw"]] if rnd.get("lastDraw") else None,
+        "lastDiscard": TILE_LABELS[rnd["lastDiscard"]] if rnd.get("lastDiscard") else None,
+        "winner": rnd.get("winner"),
+        "winInfo": rnd.get("winInfo"),
     }
 
 
-def apply_discard(round_state, seat_idx, tile):
-    seat = round_state["seats"][seat_idx]
-    if tile not in seat["hand"]:
-        return False, "手牌中沒有這張牌"
-    seat["hand"].remove(tile)
-    seat["discards"].append(tile)
-    round_state["lastDraw"] = None
-    round_state["currentSeat"] = (seat_idx + 1) % 4
-    round_state["phase"] = "draw"
-    return True, ""
+def build_win_info(rnd, seat_idx):
+    seat = seat_at(rnd, seat_idx)
+    win_type = rnd.get("winType", "zimo")
+    extra = rnd.get("winTile")
+    tai, tai_items = calc_tai(seat, rnd, win_type, extra)
+    return {
+        "winnerId": seat["id"],
+        "winnerName": seat["name"],
+        "winType": win_type,
+        "zimo": win_type == "zimo",
+        "tai": tai,
+        "taiItems": tai_items,
+        "hand": [TILE_LABELS[t] for t in sort_tiles(seat["hand"] + ([extra] if extra and extra not in seat["hand"] else []))],
+        "flowers": [TILE_LABELS[f] for f in seat["flowers"]],
+        "melds": [meld_label(m) for m in seat["melds"]],
+        "message": f"{seat['name']} {('自摸' if win_type == 'zimo' else '胡牌' if win_type == 'ron' else '搶槓')}！共 {tai} 台",
+    }
 
 
-def apply_draw(round_state):
-    seat = round_state["seats"][round_state["currentSeat"]]
-    if not round_state["wall"]:
-        round_state["winner"] = "draw"
-        round_state["winInfo"] = {"message": "流局，無人胡牌"}
-        return None
-    tile = draw_from_wall(round_state["wall"], seat)
-    round_state["lastDraw"] = tile
-    round_state["phase"] = "discard"
-    if can_win(seat["hand"]):
-        return "win"
-    return tile
+def advance_game(rnd):
+    """推進到下一個需要等待的狀態。回傳 'wait' | 'ended' | 'draw'。"""
+    if rnd.get("phase") == "ended" or rnd.get("winner"):
+        return "ended"
+
+    while True:
+        if rnd["phase"] == "claim":
+            ai_auto_respond_claims(rnd)
+            for i in range(4):
+                s = seat_at(rnd, i)
+                if s["isAI"] and i not in rnd["claim"].get("responses", {}):
+                    opts = get_claim_options(rnd, i)
+                    if not opts:
+                        rnd["claim"]["responses"][i] = "pass"
+            if not all_claims_passed(rnd):
+                return "wait"
+            result = resolve_claims(rnd)
+            if result == "win":
+                seat_idx = rnd["winnerSeat"]
+                rnd["winner"] = rnd["seats"][seat_idx]["id"]
+                rnd["winInfo"] = build_win_info(rnd, seat_idx)
+                return "ended"
+            if result in ("meld", "kong"):
+                if rnd["phase"] == "draw":
+                    continue
+                s = seat_at(rnd, rnd["currentSeat"])
+                if s["isAI"]:
+                    act = ai_take_self_action(rnd, rnd["currentSeat"])
+                    if act and act["action"] == "zimo":
+                        apply_zimo(rnd, rnd["currentSeat"])
+                        rnd["winner"] = s["id"]
+                        rnd["winInfo"] = build_win_info(rnd, rnd["currentSeat"])
+                        return "ended"
+                    tile = ai_choose_discard(s)
+                    if tile:
+                        apply_discard(rnd, rnd["currentSeat"], tile)
+                    continue
+                return "wait"
+            continue
+
+        if rnd["phase"] == "rob_kong":
+            ai_auto_respond_rob_kong(rnd)
+            rk = rnd["robKong"]
+            for i in range(4):
+                s = seat_at(rnd, i)
+                if s["isAI"] and i != rk["seat"] and i not in rk.get("responses", {}):
+                    if get_rob_kong_options(rnd, i):
+                        rk.setdefault("responses", {})[i] = "pass"
+            if not all_rob_passed(rnd):
+                return "wait"
+            result = resolve_rob_kong(rnd)
+            if result == "win":
+                seat_idx = rnd["winnerSeat"]
+                rnd["winner"] = rnd["seats"][seat_idx]["id"]
+                rnd["winInfo"] = build_win_info(rnd, seat_idx)
+                return "ended"
+            continue
+
+        if rnd["phase"] == "draw":
+            seat_idx = rnd["currentSeat"]
+            seat = seat_at(rnd, seat_idx)
+            if not rnd["wall"]:
+                rnd["winner"] = "draw"
+                rnd["winInfo"] = {"message": "流局，牌牆用完了"}
+                return "ended"
+            tile = draw_from_wall(rnd, seat)
+            if not tile:
+                rnd["winner"] = "draw"
+                rnd["winInfo"] = {"message": "流局"}
+                return "ended"
+            rnd["phase"] = "discard"
+            if can_win(seat["hand"], seat["melds"]):
+                if seat["isAI"]:
+                    apply_zimo(rnd, seat_idx)
+                    rnd["winner"] = seat["id"]
+                    rnd["winInfo"] = build_win_info(rnd, seat_idx)
+                    return "ended"
+                return "wait"
+            if seat["isAI"]:
+                act = ai_take_self_action(rnd, seat_idx)
+                if act and act["action"] == "ankong":
+                    apply_ankong(rnd, seat_idx, act["tile"])
+                    continue
+                tile = ai_choose_discard(seat)
+                apply_discard(rnd, seat_idx, tile)
+                continue
+            return "wait"
+
+        if rnd["phase"] == "discard":
+            seat = seat_at(rnd, rnd["currentSeat"])
+            if seat["isAI"]:
+                act = ai_take_self_action(rnd, rnd["currentSeat"])
+                if act and act["action"] == "zimo":
+                    apply_zimo(rnd, rnd["currentSeat"])
+                    rnd["winner"] = seat["id"]
+                    rnd["winInfo"] = build_win_info(rnd, rnd["currentSeat"])
+                    return "ended"
+                if act and act["action"] == "ankong":
+                    apply_ankong(rnd, rnd["currentSeat"], act["tile"])
+                    continue
+                tile = ai_choose_discard(seat)
+                apply_discard(rnd, rnd["currentSeat"], tile)
+                continue
+            return "wait"
+
+        return "wait"

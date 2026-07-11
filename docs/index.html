@@ -47,7 +47,7 @@
         <button class="game-card" data-game="mahjong">
           <span class="game-card-icon">🀄</span>
           <span class="game-card-name">台灣麻將</span>
-          <span class="game-card-desc">2 人連線 + 2 電腦，有花牌算台</span>
+          <span class="game-card-desc">吃碰槓胡、搶槓、完整台數</span>
         </button>
         <button class="game-card" data-game="blockblast">
           <span class="game-card-icon">🧩</span>
@@ -180,6 +180,10 @@
 
     <!-- 台灣麻將 -->
     <section id="mahjongGame" class="panel hidden">
+      <div class="mj-rules">
+        <p>台灣麻將完整規則：<strong>吃、碰、明槓、暗槓、加槓、胡牌、搶槓</strong>，2 人連線 + 2 電腦。</p>
+        <p>別人打牌時可按 <strong>胡／碰／明槓／吃</strong>；輪到你時可 <strong>自摸、暗槓、加槓</strong> 再打牌。加槓時別人可搶槓胡。</p>
+      </div>
       <div class="mj-info-bar">
         <span>莊家：<strong id="mjDealerWind">東</strong></span>
         <span>牌牆剩餘：<strong id="mjWallCount">0</strong> 張</span>
@@ -189,8 +193,18 @@
       <p id="mjLastDraw" class="mj-last-draw hidden"></p>
       <div id="mjHand" class="mj-hand"></div>
       <p id="mjFeedback" class="feedback hidden"></p>
+      <div class="mj-actions mj-claim-actions">
+        <button id="btnMahjongRon" type="button" class="btn btn-primary hidden">胡！</button>
+        <button id="btnMahjongPon" type="button" class="btn btn-secondary hidden">碰</button>
+        <button id="btnMahjongMinkong" type="button" class="btn btn-secondary hidden">明槓</button>
+        <div id="mjChiOptions" class="mj-chi-options hidden"></div>
+        <button id="btnMahjongQiang" type="button" class="btn btn-primary hidden">搶槓胡！</button>
+        <button id="btnMahjongPass" type="button" class="btn btn-text hidden">跳過</button>
+      </div>
       <div class="mj-actions">
         <button id="btnMahjongHu" type="button" class="btn btn-primary hidden">胡牌（自摸）</button>
+        <button id="btnMahjongAnkong" type="button" class="btn btn-secondary hidden">暗槓</button>
+        <button id="btnMahjongJiagang" type="button" class="btn btn-secondary hidden">加槓</button>
         <button id="btnMahjongDiscard" type="button" class="btn btn-secondary">打出選取的牌</button>
       </div>
       <div id="mjRoundResult" class="round-result hidden"></div>
@@ -266,6 +280,6 @@
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
   <script src="./blockblast.js"></script>
   <script src="./mahjong.js"></script>
-  <script src="./app.js?v=4"></script>
+  <script src="./app.js?v=5"></script>
 </body>
 </html>

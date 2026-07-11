@@ -423,66 +423,29 @@ def _emit_mahjong_to_humans(room, code, event, extra=None):
         socketio.emit(event, view, to=p["id"])
 
 
-def _declare_mahjong_win(room, code, seat, zimo):
-    rnd = room["round"]
-    tai, tai_items = mj.calc_tai(seat, rnd["dealer"], zimo)
-    rnd["winner"] = seat["id"]
-    rnd["zimo"] = zimo
-    rnd["winInfo"] = {
-        "winnerId": seat["id"],
-        "winnerName": seat["name"],
-        "zimo": zimo,
-        "tai": tai,
-        "taiItems": tai_items,
-        "hand": [mj.TILE_LABELS[t] for t in seat["hand"]],
-        "flowers": [mj.TILE_LABELS[f] for f in seat["flowers"]],
-        "message": f"{seat['name']} {'自摸' if zimo else '胡牌'}！共 {tai} 台",
-    }
-    room["gameState"] = "round-end"
-    _emit_mahjong_to_humans(room, code, "game:mahjong-win")
-
-
-def _advance_mahjong(room, code, initial=False):
-    """推進麻將回合直到需要真人操作或結束。"""
+def _mahjong_loop(room, code, initial=False):
     rnd = room["round"]
     event = "game:mahjong-new-round" if initial else "game:mahjong-update"
-    while rnd["winner"] is None:
-        seat = rnd["seats"][rnd["currentSeat"]]
-        if rnd["phase"] == "draw":
-            result = mj.apply_draw(rnd)
-            if rnd["winner"] == "draw":
-                rnd["winInfo"] = {"message": "流局，牌牆用完了"}
+    while True:
+        status = mj.advance_game(rnd)
+        if status == "ended":
+            if rnd.get("winner") == "draw":
                 room["gameState"] = "round-end"
-                _emit_mahjong_to_humans(room, code, "game:mahjong-win")
-                return
-            if result == "win":
-                if seat["isAI"]:
-                    _declare_mahjong_win(room, code, seat, zimo=True)
-                    return
-                _emit_mahjong_to_humans(room, code, event)
-                return
-            if seat["isAI"]:
-                tile = mj.ai_choose_discard(seat)
-                if tile:
-                    mj.apply_discard(rnd, seat["seatIndex"], tile)
-                continue
-            _emit_mahjong_to_humans(room, code, event)
+            elif rnd.get("winner"):
+                room["gameState"] = "round-end"
+            _emit_mahjong_to_humans(room, code, "game:mahjong-win")
             return
-        if rnd["phase"] == "discard":
-            if seat["isAI"]:
-                tile = mj.ai_choose_discard(seat)
-                if not tile:
-                    return
-                mj.apply_discard(rnd, seat["seatIndex"], tile)
-                continue
+        if status == "wait":
             _emit_mahjong_to_humans(room, code, event)
+            initial = False
             return
 
 
 def start_mahjong_round(room, code):
+    streak = room.get("dealerStreak", 0)
     room["gameState"] = "playing"
-    room["round"] = mj.start_round(room["players"])
-    _advance_mahjong(room, code, initial=True)
+    room["round"] = mj.start_round(room["players"], dealer_streak=streak)
+    _mahjong_loop(room, code, initial=True)
 
 
 @socketio.on("game:start-round")
@@ -747,22 +710,22 @@ def on_mahjong_discard(data):
     if not rnd or rnd.get("winner"):
         return
     seat = mj.seat_by_id(rnd, sid)
-    if not seat or seat["isAI"]:
+    if not seat:
         return
-    if rnd["currentSeat"] != seat["seatIndex"] or rnd["phase"] != "discard":
+    if rnd["phase"] != "discard" or rnd["currentSeat"] != seat["seatIndex"]:
         emit("game:mahjong-error", {"message": "還沒輪到你打牌"})
         return
     tile_id = (data.get("tileId") or "").strip()
-    if tile_id not in seat["hand"]:
-        emit("game:mahjong-error", {"message": "請選擇要打出的牌"})
+    ok, msg = mj.apply_discard(rnd, seat["seatIndex"], tile_id)
+    if not ok:
+        emit("game:mahjong-error", {"message": msg})
         return
-    mj.apply_discard(rnd, seat["seatIndex"], tile_id)
-    _advance_mahjong(room, code)
+    _mahjong_loop(room, code)
     broadcast_room(room)
 
 
-@socketio.on("game:mahjong-hu")
-def on_mahjong_hu():
+@socketio.on("game:mahjong-action")
+def on_mahjong_action(data):
     from flask import request
     sid = request.sid
     code = sid_to_room.get(sid)
@@ -773,17 +736,111 @@ def on_mahjong_hu():
     if not rnd or rnd.get("winner"):
         return
     seat = mj.seat_by_id(rnd, sid)
-    if not seat or seat["isAI"]:
+    if not seat:
         return
-    if rnd["currentSeat"] != seat["seatIndex"] or rnd["phase"] != "discard":
-        emit("game:mahjong-error", {"message": "現在不能胡牌"})
+    action = (data.get("action") or "").strip()
+    idx = seat["seatIndex"]
+
+    if action == "pass":
+        if rnd["phase"] == "claim":
+            mj.apply_pass_claim(rnd, idx)
+        elif rnd["phase"] == "rob_kong":
+            mj.apply_pass_rob_kong(rnd, idx)
+        else:
+            emit("game:mahjong-error", {"message": "目前不能跳過"})
+            return
+        _mahjong_loop(room, code)
+        broadcast_room(room)
         return
-    if not mj.can_win(seat["hand"]):
-        emit("game:mahjong-error", {"message": "牌型還不能胡"})
+
+    if action == "zimo":
+        if not mj.can_win(seat["hand"], seat["melds"]):
+            emit("game:mahjong-error", {"message": "牌型還不能胡"})
+            return
+        mj.apply_zimo(rnd, idx)
+        rnd["winner"] = seat["id"]
+        rnd["winInfo"] = mj.build_win_info(rnd, idx)
+        room["gameState"] = "round-end"
+        emit("game:mahjong-self-win", {"message": "🎉 你胡牌了！自摸！"})
+        _emit_mahjong_to_humans(room, code, "game:mahjong-win")
+        broadcast_room(room)
         return
-    _declare_mahjong_win(room, code, seat, zimo=True)
-    emit("game:mahjong-self-win", {"message": "🎉 你胡牌了！"})
-    broadcast_room(room)
+
+    if action == "hu":
+        opts = mj.get_claim_options(rnd, idx)
+        if not any(o["action"] == "hu" for o in opts):
+            emit("game:mahjong-error", {"message": "現在不能胡這張牌"})
+            return
+        tile = rnd["claim"]["tile"]
+        rnd["claim"]["responses"][idx] = {"action": "hu", "tile": tile}
+        emit("game:mahjong-self-win", {"message": "🎉 你胡牌了！"})
+        _mahjong_loop(room, code)
+        broadcast_room(room)
+        return
+
+    if action == "pon":
+        tile = rnd["claim"]["tile"]
+        rnd["claim"]["responses"][idx] = {"action": "pon", "tile": tile}
+        _mahjong_loop(room, code)
+        broadcast_room(room)
+        return
+
+    if action == "minkong":
+        tile = rnd["claim"]["tile"]
+        rnd["claim"]["responses"][idx] = {"action": "minkong", "tile": tile}
+        _mahjong_loop(room, code)
+        broadcast_room(room)
+        return
+
+    if action == "chi":
+        tiles = data.get("tiles")
+        if not tiles:
+            emit("game:mahjong-error", {"message": "請選擇要吃的組合"})
+            return
+        rnd["claim"]["responses"][idx] = {"action": "chi", "tiles": tiles, "tile": rnd["claim"]["tile"]}
+        _mahjong_loop(room, code)
+        broadcast_room(room)
+        return
+
+    if action == "ankong":
+        tile = data.get("tileId")
+        ok, msg = mj.apply_ankong(rnd, idx, tile)
+        if not ok:
+            emit("game:mahjong-error", {"message": msg})
+            return
+        _mahjong_loop(room, code)
+        broadcast_room(room)
+        return
+
+    if action == "jiagang":
+        tile = data.get("tileId")
+        meld_index = data.get("meldIndex", 0)
+        ok, msg = mj.start_jiagang(rnd, idx, tile, meld_index)
+        if not ok:
+            emit("game:mahjong-error", {"message": msg})
+            return
+        _mahjong_loop(room, code)
+        broadcast_room(room)
+        return
+
+    if action == "qianggang":
+        rk = rnd.get("robKong")
+        if not rk:
+            emit("game:mahjong-error", {"message": "目前不能搶槓"})
+            return
+        rk.setdefault("responses", {})[idx] = {"action": "qianggang", "tile": rk["tile"]}
+        emit("game:mahjong-self-win", {"message": "🎉 你搶槓胡牌了！"})
+        _mahjong_loop(room, code)
+        broadcast_room(room)
+        return
+
+    emit("game:mahjong-error", {"message": "不支援的操作"})
+
+
+@socketio.on("game:mahjong-hu")
+def on_mahjong_hu_compat():
+    """相容舊版自摸按鈕。"""
+    on_mahjong_action({"action": "zimo"})
 
 
 # 相容舊版事件名稱
