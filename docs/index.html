@@ -183,9 +183,25 @@
     <section id="mahjongGame" class="panel hidden mj-panel">
       <div class="mj-rules">
         <p>台灣麻將 16 張：<strong>吃、碰、明槓、暗槓、加槓、胡牌、搶槓</strong>，2 人連線 + 2 電腦。</p>
-        <p>開局隨機<strong>抓位</strong>，聽牌宣告 +1 台且不可再吃碰槓換牌。</p>
+        <p>開局<strong>擲骰抓位</strong>，聽牌宣告 +1 台。籌碼台100／底50，東南西北一將。</p>
       </div>
-      <p id="mjSeatDraw" class="mj-seat-draw hidden"></p>
+      <div id="mjSeatDrawPanel" class="mj-seat-draw-panel hidden">
+        <h2 class="mj-seat-draw-title">🎲 擲骰抓位</h2>
+        <ol class="mj-seat-steps">
+          <li>四位玩家<strong>暫時入座</strong>（連線順序）</li>
+          <li>蓋起東、南、西、北方位牌並洗勻</li>
+          <li><strong>擲三顆骰子</strong>決定誰先抽牌</li>
+          <li>依序抽取方位牌，抽到<strong>東</strong>者為莊家</li>
+          <li>入座完成，開始打牌！</li>
+        </ol>
+        <div id="mjTempSeats" class="mj-temp-seats"></div>
+        <div id="mjDiceArea" class="mj-dice-area"></div>
+        <p id="mjDrawStatus" class="mj-draw-status"></p>
+        <div id="mjWindTiles" class="mj-wind-pick-row"></div>
+        <div id="mjSeatDrawResult" class="mj-seat-draw-result"></div>
+        <button id="btnMjRollDice" type="button" class="btn btn-primary hidden">🎲 擲三顆骰子</button>
+      </div>
+      <div id="mjGameMain" class="mj-game-main">
       <div class="mj-info-bar">
         <span>圈風：<strong id="mjRoundWind">東風圈</strong></span>
         <span>莊家：<strong id="mjDealerWind">東</strong></span>
@@ -240,6 +256,7 @@
         <button id="btnMahjongSettle" type="button" class="btn btn-secondary hidden">不玩了，結算</button>
       </div>
       <div id="mjSettlement" class="mj-settlement hidden"></div>
+      </div>
     </section>
 
     <!-- Block Blast 解題 -->
@@ -307,10 +324,10 @@
     </section>
   </main>
 
-  <script src="./config.js?v=12"></script>
+  <script src="./config.js?v=14"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
-  <script src="./blockblast.js?v=12"></script>
-  <script src="./mahjong.js?v=12"></script>
-  <script src="./app.js?v=12"></script>
+  <script src="./blockblast.js?v=14"></script>
+  <script src="./mahjong.js?v=14"></script>
+  <script src="./app.js?v=14"></script>
 </body>
 </html>

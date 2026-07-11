@@ -156,7 +156,7 @@ def deal_initial(wall, seats, dealer):
 
 
 def assign_seats_for_jiang(human_players):
-    """隨機抓位：人類玩家分配到隨機方位，其餘座位由電腦補上。"""
+    """隨機抓位（備用）：人類玩家分配到隨機方位。"""
     shuffled = list(range(4))
     random.shuffle(shuffled)
     human_seats = shuffled[: len(human_players)]
@@ -165,12 +165,191 @@ def assign_seats_for_jiang(human_players):
     return assignment, ai_seats
 
 
+# ── 擲骰抓位（東南西北蓋牌）────────────────────────────────
+
+def init_seat_draw(human_players):
+    """步驟 1～2：暫時入座 + 洗好四張方位牌（蓋牌）。"""
+    temps = []
+    for i, p in enumerate(human_players):
+        temps.append({"tempIndex": i, "id": p["id"], "name": p["name"], "isAI": False})
+    for j, ai_name in enumerate(AI_NAMES):
+        idx = len(human_players) + j
+        temps.append({"tempIndex": idx, "id": f"ai-{idx}", "name": ai_name, "isAI": True})
+    winds = list(WINDS)
+    random.shuffle(winds)
+    tiles = [{"slot": i, "wind": w} for i, w in enumerate(winds)]
+    return {
+        "phase": "dice",
+        "tempSeats": temps,
+        "rollerTempIndex": 0,
+        "dice": None,
+        "diceTotal": None,
+        "drawOrder": None,
+        "drawTurn": 0,
+        "tiles": tiles,
+        "remainingSlots": [t["slot"] for t in tiles],
+        "draws": [],
+        "seatAssignment": None,
+        "dealer": None,
+    }
+
+
+def _first_drawer_offset(dice_total):
+    """5,9,13,17→擲骰者；6,10,14,18→下家；3,7,11,15→對家；4,8,12,16→上家。"""
+    return {1: 0, 2: 1, 3: 2, 0: 3}[dice_total % 4]
+
+
+def roll_seat_dice(seat_draw, roller_temp_index=None):
+    if seat_draw["phase"] != "dice":
+        return False, "目前不是擲骰階段"
+    if roller_temp_index is not None:
+        seat_draw["rollerTempIndex"] = roller_temp_index
+    dice = [random.randint(1, 6) for _ in range(3)]
+    total = sum(dice)
+    offset = _first_drawer_offset(total)
+    roller = seat_draw["rollerTempIndex"]
+    start = (roller + offset) % 4
+    seat_draw["dice"] = dice
+    seat_draw["diceTotal"] = total
+    seat_draw["drawOrder"] = [(start + i) % 4 for i in range(4)]
+    seat_draw["phase"] = "drawing"
+    seat_draw["drawTurn"] = 0
+    return True, ""
+
+
+def current_seat_drawer(seat_draw):
+    if seat_draw["phase"] != "drawing" or seat_draw["drawTurn"] >= 4:
+        return None
+    temp_idx = seat_draw["drawOrder"][seat_draw["drawTurn"]]
+    return next(t for t in seat_draw["tempSeats"] if t["tempIndex"] == temp_idx)
+
+
+def pick_wind_tile(seat_draw, slot):
+    if seat_draw["phase"] != "drawing":
+        return False, "尚未開始抽方位牌"
+    if slot not in seat_draw["remainingSlots"]:
+        return False, "請選擇一張方位牌"
+    drawer = current_seat_drawer(seat_draw)
+    if not drawer:
+        return False, "抽牌已結束"
+    tile = next(t for t in seat_draw["tiles"] if t["slot"] == slot)
+    wind = tile["wind"]
+    seat_draw["remainingSlots"].remove(slot)
+    seat_draw["draws"].append({
+        "tempIndex": drawer["tempIndex"],
+        "id": drawer["id"],
+        "name": drawer["name"],
+        "isAI": drawer["isAI"],
+        "wind": wind,
+        "label": TILE_LABELS[wind],
+        "slot": slot,
+    })
+    seat_draw["drawTurn"] += 1
+    if seat_draw["drawTurn"] >= 4:
+        _finalize_seat_draw(seat_draw)
+    return True, ""
+
+
+def _finalize_seat_draw(seat_draw):
+    assignment = {}
+    dealer = 0
+    for d in seat_draw["draws"]:
+        seat_idx = int(d["wind"][1]) - 1
+        assignment[d["id"]] = seat_idx
+        if d["wind"] == "Z1":
+            dealer = seat_idx
+    seat_draw["seatAssignment"] = assignment
+    seat_draw["dealer"] = dealer
+    seat_draw["phase"] = "done"
+
+
+def process_ai_seat_draws(seat_draw):
+    """電腦依序自動抽牌。"""
+    while seat_draw["phase"] == "drawing":
+        drawer = current_seat_drawer(seat_draw)
+        if not drawer or not drawer["isAI"]:
+            break
+        slot = random.choice(seat_draw["remainingSlots"])
+        pick_wind_tile(seat_draw, slot)
+
+
+def build_seat_draw_view(seat_draw, viewer_sid):
+    if not seat_draw:
+        return None
+    drawer = current_seat_drawer(seat_draw)
+    total = seat_draw.get("diceTotal")
+    if total:
+        mod = total % 4
+        hint_map = {
+            1: f"共 {total} 點 → 擲骰者先抽",
+            2: f"共 {total} 點 → 下家（右手邊）先抽",
+            3: f"共 {total} 點 → 對家先抽",
+            0: f"共 {total} 點 → 上家（左手邊）先抽",
+        }
+        draw_hint = hint_map.get(mod, "")
+    else:
+        draw_hint = ""
+    return {
+        "phase": seat_draw["phase"],
+        "tempSeats": seat_draw["tempSeats"],
+        "rollerTempIndex": seat_draw["rollerTempIndex"],
+        "dice": seat_draw.get("dice"),
+        "diceTotal": total,
+        "drawOrder": seat_draw.get("drawOrder"),
+        "drawTurn": seat_draw.get("drawTurn", 0),
+        "remainingCount": len(seat_draw.get("remainingSlots", [])),
+        "remainingSlots": list(seat_draw.get("remainingSlots", [])),
+        "draws": seat_draw.get("draws", []),
+        "drawHint": draw_hint,
+        "currentDrawer": (
+            {**drawer, "isMe": drawer["id"] == viewer_sid} if drawer else None
+        ),
+        "canRollDice": seat_draw["phase"] == "dice",
+        "canPick": (
+            seat_draw["phase"] == "drawing"
+            and drawer
+            and drawer["id"] == viewer_sid
+            and not drawer["isAI"]
+        ),
+        "isDone": seat_draw["phase"] == "done",
+        "finalSeats": [
+            {
+                "name": d["name"],
+                "wind": d["label"],
+                "isMe": d["id"] == viewer_sid,
+                "isDealer": d["wind"] == "Z1",
+                "isAI": d["isAI"],
+            }
+            for d in seat_draw.get("draws", [])
+        ],
+    }
+
+
+def apply_seat_draw_to_session(session):
+    sd = session.get("seatDraw")
+    if not sd or sd["phase"] != "done":
+        return False
+    session["seatAssignment"] = sd["seatAssignment"]
+    session["dealer"] = sd["dealer"]
+    session["dealerStreak"] = 0
+    session["seatDrawComplete"] = True
+    return True
+
+
 def create_seats(human_players, seat_assignment=None):
     if seat_assignment is None:
         seat_assignment, ai_seats = assign_seats_for_jiang(human_players)
+        ai_entries = None
     else:
-        used = set(seat_assignment.values())
-        ai_seats = [i for i in range(4) if i not in used]
+        ai_entries = sorted(
+            [(idx, pid) for pid, idx in seat_assignment.items() if pid.startswith("ai-")],
+            key=lambda x: x[0],
+        )
+        if not ai_entries:
+            used = set(seat_assignment.values())
+            ai_seats = [i for i in range(4) if i not in used]
+        else:
+            ai_seats = None
 
     seats = [None] * 4
     for p in human_players:
@@ -180,12 +359,22 @@ def create_seats(human_players, seat_assignment=None):
             "seatIndex": idx, "hand": [], "flowers": [], "discards": [], "melds": [],
             "listening": False,
         }
-    for j, ai_idx in enumerate(ai_seats):
-        seats[ai_idx] = {
-            "id": f"ai-{ai_idx}", "name": AI_NAMES[j], "isAI": True,
-            "seatIndex": ai_idx, "hand": [], "flowers": [], "discards": [], "melds": [],
-            "listening": False,
-        }
+    if ai_entries:
+        for ai_idx, ai_id in ai_entries:
+            temp_num = int(ai_id.split("-")[1])
+            name_idx = temp_num - len(human_players)
+            seats[ai_idx] = {
+                "id": ai_id, "name": AI_NAMES[name_idx], "isAI": True,
+                "seatIndex": ai_idx, "hand": [], "flowers": [], "discards": [], "melds": [],
+                "listening": False,
+            }
+    else:
+        for j, ai_idx in enumerate(ai_seats):
+            seats[ai_idx] = {
+                "id": f"ai-{ai_idx}", "name": AI_NAMES[j], "isAI": True,
+                "seatIndex": ai_idx, "hand": [], "flowers": [], "discards": [], "melds": [],
+                "listening": False,
+            }
     return seats
 
 
@@ -1031,13 +1220,13 @@ ROUND_WIND_NAMES = ("東", "南", "西", "北")
 
 
 def create_mahjong_session(human_players, chip_per_tai=CHIP_PER_TAI, chip_base=CHIP_BASE):
-    seat_assignment, ai_seats = assign_seats_for_jiang(human_players)
     return {
         "roundWind": 0,
-        "dealer": random.randint(0, 3),
+        "dealer": 0,
         "dealerStreak": 0,
-        "seatAssignment": seat_assignment,
-        "aiSeatIndices": ai_seats,
+        "seatAssignment": None,
+        "seatDraw": None,
+        "seatDrawComplete": False,
         "scores": {},
         "history": [],
         "handCount": 0,
@@ -1176,7 +1365,15 @@ def _session_view(session, rnd, viewer_sid):
     rw = session.get("roundWind", 0)
     wind_label = f"{ROUND_WIND_NAMES[rw]}風圈" if rw < 4 else "一將打完"
     seat_draw = []
-    if rnd:
+    sd = session.get("seatDraw")
+    if sd and sd.get("phase") == "done":
+        for d in sd.get("draws", []):
+            seat_draw.append({
+                "name": d["name"],
+                "wind": d["label"],
+                "isMe": d["id"] == viewer_sid,
+            })
+    elif rnd:
         for s in rnd.get("seats") or []:
             if not s["isAI"]:
                 seat_draw.append({
@@ -1307,6 +1504,7 @@ def build_client_view(rnd, viewer_sid, session=None):
         "lastDraw": tile_obj(rnd["lastDraw"]) if rnd.get("lastDraw") else None,
         "lastDiscard": tile_obj(rnd["lastDiscard"]) if rnd.get("lastDiscard") else None,
         "discardSeat": rnd.get("discardSeat"),
+        "discardCount": rnd.get("discardCount", 0),
         "winner": rnd.get("winner"),
         "winInfo": rnd.get("winInfo"),
         "session": _session_view(session, rnd, viewer_sid),
@@ -1333,7 +1531,7 @@ def build_win_info(rnd, seat_idx):
 
 
 def advance_game(rnd):
-    """推進到下一個需要等待的狀態。回傳 'wait' | 'ended' | 'draw'。"""
+    """推進到下一個需要等待的狀態。回傳 'wait' | 'ended' | 'discard'。"""
     if rnd.get("phase") == "ended" or rnd.get("winner"):
         return "ended"
 
@@ -1368,6 +1566,7 @@ def advance_game(rnd):
                     tile = ai_choose_discard(s)
                     if tile:
                         apply_discard(rnd, rnd["currentSeat"], tile)
+                        return "discard"
                     continue
                 return "wait"
             continue
@@ -1417,7 +1616,7 @@ def advance_game(rnd):
                     continue
                 tile = ai_choose_discard(seat)
                 apply_discard(rnd, seat_idx, tile)
-                continue
+                return "discard"
             return "wait"
 
         if rnd["phase"] == "discard":
@@ -1434,7 +1633,7 @@ def advance_game(rnd):
                     continue
                 tile = ai_choose_discard(seat)
                 apply_discard(rnd, rnd["currentSeat"], tile)
-                continue
+                return "discard"
             return "wait"
 
         return "wait"

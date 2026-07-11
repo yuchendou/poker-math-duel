@@ -442,15 +442,32 @@ def _mahjong_loop(room, code, initial=False):
             _finish_mahjong_hand(room, code)
             _emit_mahjong_to_humans(room, code, "game:mahjong-win")
             return
+        if status == "discard":
+            _emit_mahjong_to_humans(room, code, event)
+            event = "game:mahjong-update"
+            initial = False
+            continue
         if status == "wait":
             _emit_mahjong_to_humans(room, code, event)
             initial = False
             return
 
 
-def start_mahjong_round(room, code):
-    if not room.get("mahjongSession"):
-        room["mahjongSession"] = mj.create_mahjong_session(room["players"])
+def _emit_seat_draw(room, code):
+    session = room.get("mahjongSession")
+    sd = session.get("seatDraw") if session else None
+    for p in room["players"]:
+        view = mj.build_seat_draw_view(sd, p["id"])
+        if view and sd and sd.get("phase") == "dice":
+            roller_idx = sd.get("rollerTempIndex", 0)
+            roller = sd["tempSeats"][roller_idx] if roller_idx < len(sd["tempSeats"]) else None
+            view["canRollDice"] = bool(
+                p.get("isHost") or (roller and roller["id"] == p["id"])
+            )
+        socketio.emit("game:mahjong-seat-draw", view, to=p["id"])
+
+
+def _begin_mahjong_hand(room, code):
     session = room["mahjongSession"]
     room["gameState"] = "playing"
     room["round"] = mj.start_round(
@@ -462,6 +479,21 @@ def start_mahjong_round(room, code):
     )
     mj.init_session_scores(session, room["round"])
     _mahjong_loop(room, code, initial=True)
+
+
+def start_mahjong_round(room, code):
+    if not room.get("mahjongSession"):
+        room["mahjongSession"] = mj.create_mahjong_session(room["players"])
+    session = room["mahjongSession"]
+    # 同一將內只抓位一次；下一局直接開打
+    if session.get("seatDrawComplete"):
+        _begin_mahjong_hand(room, code)
+        return
+    if not session.get("seatDraw"):
+        session["seatDraw"] = mj.init_seat_draw(room["players"])
+    room["gameState"] = "seat-draw"
+    _emit_seat_draw(room, code)
+    broadcast_room(room)
 
 
 @socketio.on("game:start-round")
@@ -736,6 +768,7 @@ def on_mahjong_discard(data):
     if not ok:
         emit("game:mahjong-error", {"message": msg})
         return
+    _emit_mahjong_to_humans(room, code, "game:mahjong-update")
     _mahjong_loop(room, code)
     broadcast_room(room)
 
@@ -864,6 +897,72 @@ def on_mahjong_action(data):
     emit("game:mahjong-error", {"message": "不支援的操作"})
 
 
+@socketio.on("game:mahjong-seat-dice")
+def on_mahjong_seat_dice():
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room or room["gameType"] != "mahjong" or room["gameState"] != "seat-draw":
+        return
+    session = room.get("mahjongSession")
+    sd = session.get("seatDraw") if session else None
+    if not sd:
+        emit("error", {"message": "抓位尚未開始"})
+        return
+    # 房主或暫時座位 0 的玩家可擲骰
+    player = next((p for p in room["players"] if p["id"] == sid), None)
+    if not player:
+        return
+    roller_idx = sd.get("rollerTempIndex", 0)
+    roller_seat = sd["tempSeats"][roller_idx] if roller_idx < len(sd["tempSeats"]) else None
+    if not player.get("isHost") and (not roller_seat or roller_seat["id"] != sid):
+        emit("error", {"message": "請由房主或暫時東位玩家擲骰"})
+        return
+    ok, msg = mj.roll_seat_dice(sd)
+    if not ok:
+        emit("error", {"message": msg})
+        return
+    mj.process_ai_seat_draws(sd)
+    _emit_seat_draw(room, code)
+    if sd["phase"] == "done":
+        mj.apply_seat_draw_to_session(session)
+        _begin_mahjong_hand(room, code)
+    broadcast_room(room)
+
+
+@socketio.on("game:mahjong-seat-pick")
+def on_mahjong_seat_pick(data):
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room or room["gameType"] != "mahjong" or room["gameState"] != "seat-draw":
+        return
+    session = room.get("mahjongSession")
+    sd = session.get("seatDraw") if session else None
+    if not sd:
+        return
+    drawer = mj.current_seat_drawer(sd)
+    if not drawer or drawer["id"] != sid:
+        emit("error", {"message": "還沒輪到你抽牌"})
+        return
+    slot = data.get("slot")
+    if slot is None:
+        emit("error", {"message": "請選擇一張方位牌"})
+        return
+    ok, msg = mj.pick_wind_tile(sd, int(slot))
+    if not ok:
+        emit("error", {"message": msg})
+        return
+    mj.process_ai_seat_draws(sd)
+    _emit_seat_draw(room, code)
+    if sd["phase"] == "done":
+        mj.apply_seat_draw_to_session(session)
+        _begin_mahjong_hand(room, code)
+    broadcast_room(room)
+
+
 @socketio.on("game:mahjong-next-hand")
 def on_mahjong_next_hand():
     from flask import request
@@ -886,16 +985,7 @@ def on_mahjong_next_hand():
     if session.get("jiangComplete"):
         emit("error", {"message": "東南西北風已打完，請結算"})
         return
-    room["gameState"] = "playing"
-    room["round"] = mj.start_round(
-        room["players"],
-        dealer=session["dealer"],
-        dealer_streak=session["dealerStreak"],
-        round_wind=session["roundWind"],
-        seat_assignment=session.get("seatAssignment"),
-    )
-    mj.init_session_scores(session, room["round"])
-    _mahjong_loop(room, code, initial=True)
+    _begin_mahjong_hand(room, code)
     broadcast_room(room)
 
 

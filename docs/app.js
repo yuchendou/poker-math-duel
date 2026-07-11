@@ -327,7 +327,7 @@ function bindSocketEvents() {
     if (state.gameType === 'bulls' && ['setup', 'playing', 'round-end'].includes(state.gameState)) {
       return;
     }
-    if (state.gameType === 'mahjong' && ['playing', 'round-end'].includes(state.gameState)) {
+    if state.gameType === 'mahjong' && ['playing', 'round-end', 'seat-draw'].includes(state.gameState)) {
       return;
     }
     if (state.gameState === 'waiting' || state.gameState === 'round-end') {

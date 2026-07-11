@@ -1263,6 +1263,188 @@ button.mj-tile {
   display: none;
 }
 
+/* 擲骰抓位 */
+.mj-seat-draw-panel {
+  background: linear-gradient(160deg, #1a3d2e 0%, #0f2818 100%);
+  border: 2px solid #5c3d1e;
+  border-radius: 16px;
+  padding: 1.25rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.mj-seat-draw-title {
+  text-align: center;
+  color: #f0d878;
+  margin-bottom: 0.75rem;
+}
+
+.mj-seat-steps {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.75);
+  margin: 0 0 1rem 1.1rem;
+  line-height: 1.7;
+}
+
+.mj-temp-seats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.mj-temp-seat {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  padding: 0.45rem 0.35rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: #ddd;
+}
+
+.mj-temp-seat.mj-temp-me {
+  border-color: #f0b429;
+  background: rgba(240, 180, 41, 0.12);
+}
+
+.mj-temp-seat.mj-temp-active {
+  box-shadow: 0 0 10px rgba(240, 180, 41, 0.5);
+  animation: mj-ting-pulse 1.2s ease-in-out infinite;
+}
+
+.mj-temp-label {
+  display: block;
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.mj-temp-name {
+  display: block;
+  font-weight: 700;
+  color: #eef6ec;
+  margin-top: 0.15rem;
+}
+
+.mj-dice-area {
+  text-align: center;
+  margin-bottom: 0.75rem;
+}
+
+.mj-dice-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.mj-die {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: linear-gradient(145deg, #fff 0%, #e0e0e0 100%);
+  border-radius: 8px;
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #c62828;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.35);
+  animation: mj-die-pop 0.45s ease-out;
+}
+
+@keyframes mj-die-pop {
+  0% { transform: scale(0.3) rotate(-20deg); opacity: 0; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+
+.mj-dice-sum {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #f0d878;
+}
+
+.mj-dice-hint {
+  margin-top: 0.5rem;
+  font-size: 0.88rem;
+  color: #a8e6cf;
+}
+
+.mj-draw-status {
+  text-align: center;
+  font-weight: 700;
+  color: #f0d878;
+  margin-bottom: 0.65rem;
+  min-height: 1.25rem;
+}
+
+.mj-wind-pick-row {
+  display: flex;
+  justify-content: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.mj-wind-pick {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+}
+
+.mj-wind-pick:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.mj-wind-back {
+  display: block;
+  width: 2.35rem;
+  height: 3rem;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #1e6b8a 0%, #0d4a6e 50%, #1a5f85 100%);
+  border: 2px solid #0a3548;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.mj-wind-pick:not(:disabled):hover .mj-wind-back {
+  outline: 2px solid #f0b429;
+  transform: translateY(-3px);
+}
+
+.mj-wind-pick-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.7);
+  pointer-events: none;
+}
+
+.mj-seat-draw-result {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
+  margin-bottom: 0.75rem;
+}
+
+.mj-seat-draw-result ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.mj-seat-draw-panel .btn {
+  display: block;
+  margin: 0 auto;
+}
+
+.mj-game-main.hidden {
+  display: none;
+}
+
 .mj-ting-badge {
   display: inline-block;
   background: #c62828;
