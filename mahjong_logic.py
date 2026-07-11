@@ -155,24 +155,42 @@ def deal_initial(wall, seats, dealer):
     return wall
 
 
-def create_seats(human_players):
-    seats = []
-    for i, p in enumerate(human_players):
-        seats.append({
+def assign_seats_for_jiang(human_players):
+    """隨機抓位：人類玩家分配到隨機方位，其餘座位由電腦補上。"""
+    shuffled = list(range(4))
+    random.shuffle(shuffled)
+    human_seats = shuffled[: len(human_players)]
+    ai_seats = shuffled[len(human_players) :]
+    assignment = {p["id"]: human_seats[i] for i, p in enumerate(human_players)}
+    return assignment, ai_seats
+
+
+def create_seats(human_players, seat_assignment=None):
+    if seat_assignment is None:
+        seat_assignment, ai_seats = assign_seats_for_jiang(human_players)
+    else:
+        used = set(seat_assignment.values())
+        ai_seats = [i for i in range(4) if i not in used]
+
+    seats = [None] * 4
+    for p in human_players:
+        idx = seat_assignment[p["id"]]
+        seats[idx] = {
             "id": p["id"], "name": p["name"], "isAI": False,
-            "seatIndex": i, "hand": [], "flowers": [], "discards": [], "melds": [],
-        })
-    for j, ai_name in enumerate(AI_NAMES):
-        idx = len(human_players) + j
-        seats.append({
-            "id": f"ai-{idx}", "name": ai_name, "isAI": True,
             "seatIndex": idx, "hand": [], "flowers": [], "discards": [], "melds": [],
-        })
+            "listening": False,
+        }
+    for j, ai_idx in enumerate(ai_seats):
+        seats[ai_idx] = {
+            "id": f"ai-{ai_idx}", "name": AI_NAMES[j], "isAI": True,
+            "seatIndex": ai_idx, "hand": [], "flowers": [], "discards": [], "melds": [],
+            "listening": False,
+        }
     return seats
 
 
-def start_round(human_players, dealer=0, dealer_streak=0, round_wind=0):
-    seats = create_seats(human_players)
+def start_round(human_players, dealer=0, dealer_streak=0, round_wind=0, seat_assignment=None):
+    seats = create_seats(human_players, seat_assignment)
     wall = create_wall()
     wall = deal_initial(wall, seats, dealer)
     return {
@@ -276,6 +294,8 @@ def get_claim_options(rnd, seat_idx):
     opts = []
     if can_win(seat["hand"], seat["melds"], tile):
         opts.append({"action": "hu", "tile": tile})
+    if seat.get("listening"):
+        return opts
     if seat["hand"].count(tile) >= 2:
         opts.append({"action": "pon", "tile": tile})
     if seat["hand"].count(tile) >= 3:
@@ -306,6 +326,8 @@ def get_self_actions(rnd, seat_idx):
         return acts
     if can_win(seat["hand"], seat["melds"]):
         acts.append({"action": "zimo"})
+    if seat.get("listening"):
+        return acts
     for t in set(seat["hand"]):
         if seat["hand"].count(t) == 4:
             acts.append({"action": "ankong", "tile": t})
@@ -464,6 +486,10 @@ def apply_discard(rnd, seat_idx, tile):
     seat = seat_at(rnd, seat_idx)
     if tile not in seat["hand"]:
         return False, "手牌中沒有這張牌"
+    if seat.get("listening"):
+        safe = safe_discards_for_listening(seat["hand"], seat["melds"])
+        if tile not in safe:
+            return False, "聽牌中只能打不破壞聽口的牌"
     seat["hand"].remove(tile)
     seat["discards"].append(tile)
     rnd["discardSeat"] = seat_idx
@@ -761,6 +787,40 @@ def _waiting_tiles(hand, melds):
     return waits
 
 
+def is_tenpai(hand, melds):
+    return len(_waiting_tiles(hand, melds)) > 0
+
+
+def safe_discards_for_listening(hand, melds):
+    """聽牌後允許打出的牌（打出後仍保持聽口）。"""
+    safe = []
+    for t in set(hand):
+        h = list(hand)
+        h.remove(t)
+        if is_tenpai(h, melds):
+            safe.append(t)
+    return safe
+
+
+def can_declare_ting(rnd, seat_idx):
+    seat = seat_at(rnd, seat_idx)
+    if seat.get("listening"):
+        return False
+    if rnd["phase"] != "discard" or rnd["currentSeat"] != seat_idx:
+        return False
+    if rnd.get("winner"):
+        return False
+    return is_tenpai(seat["hand"], seat["melds"])
+
+
+def apply_declare_ting(rnd, seat_idx):
+    if not can_declare_ting(rnd, seat_idx):
+        return False, "目前無法宣告聽牌"
+    seat = seat_at(rnd, seat_idx)
+    seat["listening"] = True
+    return True, ""
+
+
 def _wait_shape_name(hand, melds, extra):
     """邊張、中洞、單吊（各 1 台）。"""
     if not extra:
@@ -949,6 +1009,9 @@ def calc_tai(seat, rnd, win_type="zimo", extra_tile=None):
     if flags.get("qiangGang"):
         add(1, "搶槓")
 
+    if seat.get("listening"):
+        add(1, "聽牌")
+
     return tai, items
 
 
@@ -959,11 +1022,14 @@ CHIP_BASE = 50
 ROUND_WIND_NAMES = ("東", "南", "西", "北")
 
 
-def create_mahjong_session(chip_per_tai=CHIP_PER_TAI, chip_base=CHIP_BASE):
+def create_mahjong_session(human_players, chip_per_tai=CHIP_PER_TAI, chip_base=CHIP_BASE):
+    seat_assignment, ai_seats = assign_seats_for_jiang(human_players)
     return {
         "roundWind": 0,
-        "dealer": 0,
+        "dealer": random.randint(0, 3),
         "dealerStreak": 0,
+        "seatAssignment": seat_assignment,
+        "aiSeatIndices": ai_seats,
         "scores": {},
         "history": [],
         "handCount": 0,
@@ -1101,6 +1167,15 @@ def _session_view(session, rnd, viewer_sid):
         })
     rw = session.get("roundWind", 0)
     wind_label = f"{ROUND_WIND_NAMES[rw]}風圈" if rw < 4 else "一將打完"
+    seat_draw = []
+    if rnd:
+        for s in rnd.get("seats") or []:
+            if not s["isAI"]:
+                seat_draw.append({
+                    "name": s["name"],
+                    "wind": WIND_NAMES[s["seatIndex"]],
+                    "isMe": s["id"] == viewer_sid,
+                })
     return {
         "roundWind": rw,
         "roundWindName": wind_label,
@@ -1109,6 +1184,7 @@ def _session_view(session, rnd, viewer_sid):
         "chipPerTai": session["chipPerTai"],
         "chipBase": session["chipBase"],
         "scores": score_rows,
+        "seatDraw": seat_draw,
         "jiangComplete": session.get("jiangComplete", False),
         "canNextHand": not session.get("jiangComplete", False),
     }
@@ -1159,6 +1235,7 @@ def build_client_view(rnd, viewer_sid, session=None):
             "seatIndex": s["seatIndex"],
             "isAI": s["isAI"],
             "isMe": is_me,
+            "listening": bool(s.get("listening")),
             "handCount": len(s["hand"]),
             "flowers": [tile_obj(f) for f in s["flowers"]],
             "discards": [tile_obj(t) for t in s["discards"]],
@@ -1180,6 +1257,15 @@ def build_client_view(rnd, viewer_sid, session=None):
         and not rob
     )
 
+    my_seat = seat_at(rnd, my_idx) if my_idx >= 0 else None
+    is_listening = bool(my_seat and my_seat.get("listening"))
+    listening_discards = []
+    if my_seat and is_listening:
+        listening_discards = [tile_obj(t) for t in safe_discards_for_listening(my_seat["hand"], my_seat["melds"])]
+    waiting_preview = []
+    if my_seat and can_declare_ting(rnd, my_idx):
+        waiting_preview = [tile_obj(t) for t in _waiting_tiles(my_seat["hand"], my_seat["melds"])]
+
     return {
         "dealer": rnd["dealer"],
         "dealerWind": WIND_NAMES[rnd["dealer"]],
@@ -1190,6 +1276,10 @@ def build_client_view(rnd, viewer_sid, session=None):
         "seats": seats_view,
         "mySeat": my_idx,
         "canDiscard": can_discard,
+        "canDeclareTing": can_declare_ting(rnd, my_idx) if my_idx >= 0 else False,
+        "isListening": is_listening,
+        "listeningDiscards": listening_discards,
+        "waitingTiles": waiting_preview,
         "canHu": any(a["action"] in ("zimo",) for a in my_self),
         "canRon": any(a["action"] == "hu" for a in my_claim_opts),
         "canPon": any(a["action"] == "pon" for a in my_claim_opts),

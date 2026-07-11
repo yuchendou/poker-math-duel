@@ -292,6 +292,13 @@ function renderSessionInfo(session) {
   if (hn) hn.textContent = session.handCount ?? 0;
   if (cr) cr.textContent = `台${session.chipPerTai}／底${session.chipBase}`;
   renderSessionBar(session);
+
+  const drawEl = mjEl('mjSeatDraw');
+  if (drawEl && session.seatDraw?.length) {
+    const text = session.seatDraw.map((s) => `${s.name} → ${s.wind}位${s.isMe ? '（你）' : ''}`).join('　');
+    drawEl.textContent = `🎲 抓位：${text}`;
+    drawEl.classList.remove('hidden');
+  }
 }
 
 function showHandEndButtons(session) {
@@ -459,6 +466,7 @@ function bindMahjong(socket, panels, showPanel) {
     fb.textContent = message;
   });
 
+  bindBtn('btnMahjongTing', () => emitAction('ting'));
   bindBtn('btnMahjongHu', () => emitAction('zimo'));
   bindBtn('btnMahjongRon', () => emitAction('hu'));
   bindBtn('btnMahjongPon', () => emitAction('pon'));
@@ -505,7 +513,7 @@ function renderCentralDiscards(state, claimTileRef, inClaim) {
         && idx === seat.discards.length - 1
         && (discardSeat == null || discardSeat === seat.seatIndex);
       const el = createMjTile(tile, {
-        size: 'xs',
+        size: 'sm',
         highlight: isClaimTarget,
         title: `${seat.wind}家打`,
       });
@@ -573,7 +581,7 @@ function renderMahjong(state) {
     head.className = 'mj-seat-head';
     head.innerHTML = `
       <span class="mj-wind">${seat.wind}</span>
-      <span class="mj-name">${seat.name}${seat.isAI ? ' 🤖' : ''}</span>
+      <span class="mj-name">${seat.name}${seat.isAI ? ' 🤖' : ''}${seat.listening ? ' <span class="mj-ting-badge">聽</span>' : ''}</span>
       <span class="mj-count">${seat.handCount} 張</span>
     `;
     el.appendChild(head);
@@ -640,20 +648,29 @@ function renderMahjong(state) {
 
   const handEl = mjEl('mjHand');
   handEl.innerHTML = '';
+  const safeDiscardIds = new Set(
+    (state.isListening ? state.listeningDiscards : []).map((t) => parseTileId(t)),
+  );
   (mySeatData?.hand || []).forEach((tile) => {
     const tileId = parseTileId(tile);
+    const locked = state.isListening && safeDiscardIds.size > 0 && !safeDiscardIds.has(tileId);
     handEl.appendChild(createMjTile(tile, {
       size: 'lg',
       selected: mjSelectedTile === tileId,
-      disabled: !state.canDiscard,
+      disabled: !state.canDiscard || locked,
       onClick: () => {
-        if (!state.canDiscard) return;
+        if (!state.canDiscard || locked) return;
         mjSelectedTile = tileId;
         renderMahjong(state);
       },
     }));
   });
 
+  if (state.isListening && state.canDiscard) {
+    mjEl('mjTurnStatus').textContent = '🔔 聽牌中 — 只能打不破壞聽口的牌';
+  }
+
+  mjEl('btnMahjongTing').classList.toggle('hidden', !state.canDeclareTing);
   mjEl('btnMahjongHu').classList.toggle('hidden', !state.canHu);
   mjEl('btnMahjongDiscard').disabled = !state.canDiscard || !mjSelectedTile;
 

@@ -450,7 +450,7 @@ def _mahjong_loop(room, code, initial=False):
 
 def start_mahjong_round(room, code):
     if not room.get("mahjongSession"):
-        room["mahjongSession"] = mj.create_mahjong_session()
+        room["mahjongSession"] = mj.create_mahjong_session(room["players"])
     session = room["mahjongSession"]
     room["gameState"] = "playing"
     room["round"] = mj.start_round(
@@ -458,6 +458,7 @@ def start_mahjong_round(room, code):
         dealer=session["dealer"],
         dealer_streak=session["dealerStreak"],
         round_wind=session["roundWind"],
+        seat_assignment=session.get("seatAssignment"),
     )
     mj.init_session_scores(session, room["round"])
     _mahjong_loop(room, code, initial=True)
@@ -768,6 +769,16 @@ def on_mahjong_action(data):
         broadcast_room(room)
         return
 
+    if action == "ting":
+        ok, msg = mj.apply_declare_ting(rnd, idx)
+        if not ok:
+            emit("game:mahjong-error", {"message": msg})
+            return
+        emit("game:mahjong-self-win", {"message": "🔔 聽牌！（+1 台，不可再吃碰槓換牌）"})
+        _emit_mahjong_to_humans(room, code, "game:mahjong-update")
+        broadcast_room(room)
+        return
+
     if action == "zimo":
         if not mj.can_win(seat["hand"], seat["melds"]):
             emit("game:mahjong-error", {"message": "牌型還不能胡"})
@@ -881,6 +892,7 @@ def on_mahjong_next_hand():
         dealer=session["dealer"],
         dealer_streak=session["dealerStreak"],
         round_wind=session["roundWind"],
+        seat_assignment=session.get("seatAssignment"),
     )
     mj.init_session_scores(session, room["round"])
     _mahjong_loop(room, code, initial=True)
