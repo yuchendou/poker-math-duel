@@ -3,6 +3,8 @@
 let mjSelectedTile = null;
 let mjState = null;
 let mjSocket = null;
+let mjDiscardSeq = 0;
+let mjFlyTimer = null;
 
 const WAN_NUM = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
 const LABEL_TO_ID = {
@@ -252,9 +254,83 @@ function renderMeldGroup(meld) {
   return group;
 }
 
-function seatPositionClass(seatIdx, mySeat) {
-  const rel = (seatIdx - mySeat + 4) % 4;
-  return ['mj-pos-self', 'mj-pos-right', 'mj-pos-top', 'mj-pos-left'][rel];
+function getDiscardSeq(state) {
+  return (state.seats || []).reduce((n, s) => n + (s.discards?.length || 0), 0);
+}
+
+function showDiscardFly(state) {
+  if (!state?.lastDiscard) return;
+  const seq = getDiscardSeq(state);
+  if (seq <= mjDiscardSeq) return;
+  mjDiscardSeq = seq;
+
+  const fly = mjEl('mjDiscardFly');
+  if (!fly) return;
+
+  const seat = (state.seats || []).find((s) => s.seatIndex === state.discardSeat);
+  const who = seat ? `${seat.wind} ${seat.name}` : '有人';
+  const isMe = seat?.isMe;
+
+  fly.innerHTML = '';
+  fly.classList.remove('hidden', 'mj-discard-fly-out', 'mj-discard-fly-me');
+  if (isMe) fly.classList.add('mj-discard-fly-me');
+
+  const label = document.createElement('div');
+  label.className = 'mj-discard-fly-label';
+  label.textContent = isMe ? '你打出' : `${who} 打出`;
+
+  const tileWrap = document.createElement('div');
+  tileWrap.className = 'mj-discard-fly-tile';
+  tileWrap.appendChild(createMjTile(state.lastDiscard, { size: 'xl', highlight: !isMe }));
+
+  fly.append(label, tileWrap);
+
+  if (mjFlyTimer) clearTimeout(mjFlyTimer);
+  requestAnimationFrame(() => fly.classList.add('mj-discard-fly-active'));
+  mjFlyTimer = setTimeout(() => {
+    fly.classList.remove('mj-discard-fly-active');
+    fly.classList.add('mj-discard-fly-out');
+    setTimeout(() => {
+      fly.classList.add('hidden');
+      fly.classList.remove('mj-discard-fly-out', 'mj-discard-fly-me');
+      fly.innerHTML = '';
+    }, 320);
+  }, 2200);
+}
+
+function updateTingBar(state) {
+  const bar = mjEl('mjTingBar');
+  const hint = mjEl('mjTingHint');
+  const waits = mjEl('mjTingWaits');
+  const btn = mjEl('btnMahjongTing');
+  if (!bar) return;
+
+  if (state.isListening) {
+    bar.classList.remove('hidden');
+    bar.classList.add('mj-ting-bar-active');
+    if (hint) hint.textContent = '🔔 已聽牌 — 只能打不破壞聽口的牌';
+    if (waits) {
+      const labels = (state.listeningDiscards || []).map(tileLabel).join('、');
+      waits.textContent = labels ? `可打：${labels}` : '';
+    }
+    if (btn) btn.classList.add('hidden');
+    return;
+  }
+
+  const showDeclare = state.canDeclareTing || (state.isTenpai && state.canDiscard);
+  if (showDeclare) {
+    bar.classList.remove('hidden', 'mj-ting-bar-active');
+    if (hint) hint.textContent = '✨ 可以聽牌了！按下面按鈕宣告（+1 台）';
+    if (waits) {
+      const waitLabels = (state.waitingTiles || []).map(tileLabel).join('、');
+      waits.textContent = waitLabels ? `聽：${waitLabels}` : '';
+    }
+    if (btn) btn.classList.remove('hidden');
+    return;
+  }
+
+  bar.classList.add('hidden');
+  if (btn) btn.classList.add('hidden');
 }
 
 function seatPositionClass(seatIdx, mySeat) {
@@ -366,6 +442,7 @@ function bindMahjong(socket, panels, showPanel) {
   socket.on('game:mahjong-new-round', (state) => {
     mjState = state;
     mjSelectedTile = null;
+    mjDiscardSeq = getDiscardSeq(state);
     showPanel(panels.mahjongGame);
     mjEl('mjRoundResult').classList.add('hidden');
     mjEl('mjSettlement')?.classList.add('hidden');
@@ -668,9 +745,13 @@ function renderMahjong(state) {
 
   if (state.isListening && state.canDiscard) {
     mjEl('mjTurnStatus').textContent = '🔔 聽牌中 — 只能打不破壞聽口的牌';
+  } else if (state.canDeclareTing || (state.isTenpai && state.canDiscard)) {
+    mjEl('mjTurnStatus').textContent = '✨ 你已聽牌，可以按「宣告聽牌」！';
   }
 
-  mjEl('btnMahjongTing').classList.toggle('hidden', !state.canDeclareTing);
+  updateTingBar(state);
+  showDiscardFly(state);
+
   mjEl('btnMahjongHu').classList.toggle('hidden', !state.canHu);
   mjEl('btnMahjongDiscard').disabled = !state.canDiscard || !mjSelectedTile;
 

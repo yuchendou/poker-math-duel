@@ -1230,6 +1230,7 @@ button.mj-tile {
 .mj-tile-sm .mj-tile-body { width: 2rem; height: 2.55rem; }
 .mj-tile-md .mj-tile-body { width: 2.35rem; height: 3rem; }
 .mj-tile-lg .mj-tile-body { width: 2.75rem; height: 3.55rem; }
+.mj-tile-xl .mj-tile-body { width: 3.5rem; height: 4.5rem; }
 
 .mj-tile.selected .mj-tile-body {
   outline: 2px solid #f0b429;
@@ -1348,6 +1349,116 @@ button.mj-tile:not(.disabled):hover .mj-tile-body {
   top: calc(var(--r) * 33.33% + 8%);
   left: calc(var(--c) * 33.33% + 10%);
   transform: rotate(0deg);
+}
+
+.mj-tile-xl .mj-bamboo-stick {
+  width: 18%;
+  height: 28%;
+}
+
+.mj-tile-xl .mj-wan-num { font-size: 1.5em; }
+
+/* 打牌飛入動畫 */
+.mj-discard-fly {
+  position: absolute;
+  top: 42%;
+  left: 50%;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  transform: translate(-50%, -50%) scale(0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.4s cubic-bezier(0.22, 1.1, 0.36, 1);
+}
+
+.mj-discard-fly.hidden {
+  display: none;
+}
+
+.mj-discard-fly-active {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1.2);
+}
+
+.mj-discard-fly-out {
+  opacity: 0;
+  transform: translate(-50%, -58%) scale(0.85);
+}
+
+.mj-discard-fly-label {
+  font-size: 1rem;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+  background: rgba(198, 40, 40, 0.85);
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.mj-discard-fly-me .mj-discard-fly-label {
+  background: rgba(33, 150, 243, 0.85);
+}
+
+.mj-discard-fly-tile {
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.55));
+  animation: mj-discard-glow 0.7s ease-in-out 3;
+}
+
+@keyframes mj-discard-glow {
+  0%, 100% { filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.55)); }
+  50% { filter: drop-shadow(0 0 18px rgba(255, 82, 82, 0.85)); }
+}
+
+/* 聽牌提示列 */
+.mj-ting-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(240, 180, 41, 0.22), rgba(198, 40, 40, 0.18));
+  border: 2px solid rgba(240, 180, 41, 0.55);
+  animation: mj-ting-pulse 1.6s ease-in-out infinite;
+}
+
+.mj-ting-bar.hidden {
+  display: none;
+}
+
+.mj-ting-bar-active {
+  border-color: rgba(198, 40, 40, 0.65);
+  background: linear-gradient(135deg, rgba(198, 40, 40, 0.2), rgba(0, 0, 0, 0.15));
+  animation: none;
+}
+
+.mj-ting-bar-text {
+  text-align: center;
+  color: #f0d878;
+  font-size: 0.9rem;
+}
+
+.mj-ting-waits {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.mj-ting-btn {
+  font-size: 1rem;
+  padding: 0.55rem 1.25rem;
+  min-width: 12rem;
+}
+
+@keyframes mj-ting-pulse {
+  0%, 100% { box-shadow: 0 0 0 rgba(240, 180, 41, 0); }
+  50% { box-shadow: 0 0 16px rgba(240, 180, 41, 0.45); }
 }
 
 .mj-tile-lg .mj-bamboo-stick {

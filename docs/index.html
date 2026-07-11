@@ -204,10 +204,18 @@
             </div>
           </div>
           <div id="mjTable" class="mj-board"></div>
+          <div id="mjDiscardFly" class="mj-discard-fly hidden" aria-live="polite"></div>
         </div>
       </div>
       <div class="mj-player-zone">
         <div id="mjMyTable" class="mj-my-table"></div>
+        <div id="mjTingBar" class="mj-ting-bar hidden">
+          <div class="mj-ting-bar-text">
+            <strong id="mjTingHint">可以聽牌了！</strong>
+            <span id="mjTingWaits" class="mj-ting-waits"></span>
+          </div>
+          <button id="btnMahjongTing" type="button" class="btn btn-primary mj-ting-btn">🔔 宣告聽牌（+1 台）</button>
+        </div>
         <div id="mjLastDraw" class="mj-last-draw hidden"></div>
         <div id="mjHand" class="mj-hand-rack"></div>
       </div>
@@ -221,7 +229,6 @@
         <button id="btnMahjongPass" type="button" class="btn btn-text hidden">跳過</button>
       </div>
       <div class="mj-actions">
-        <button id="btnMahjongTing" type="button" class="btn btn-primary hidden">聽牌（+1 台）</button>
         <button id="btnMahjongHu" type="button" class="btn btn-primary hidden">胡牌（自摸）</button>
         <button id="btnMahjongAnkong" type="button" class="btn btn-secondary hidden">暗槓</button>
         <button id="btnMahjongJiagang" type="button" class="btn btn-secondary hidden">加槓</button>
@@ -300,10 +307,10 @@
     </section>
   </main>
 
-  <script src="./config.js?v=11"></script>
+  <script src="./config.js?v=12"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
-  <script src="./blockblast.js?v=11"></script>
-  <script src="./mahjong.js?v=11"></script>
-  <script src="./app.js?v=11"></script>
+  <script src="./blockblast.js?v=12"></script>
+  <script src="./mahjong.js?v=12"></script>
+  <script src="./app.js?v=12"></script>
 </body>
 </html>

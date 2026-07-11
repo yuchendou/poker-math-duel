@@ -788,7 +788,15 @@ def _waiting_tiles(hand, melds):
 
 
 def is_tenpai(hand, melds):
-    return len(_waiting_tiles(hand, melds)) > 0
+    """聽牌：再摸一張可胡，或打出一張後進入聽口（莊家 17 張）。"""
+    if _waiting_tiles(hand, melds):
+        return True
+    for t in set(hand):
+        h = list(hand)
+        h.remove(t)
+        if _waiting_tiles(h, melds):
+            return True
+    return False
 
 
 def safe_discards_for_listening(hand, melds):
@@ -1259,6 +1267,7 @@ def build_client_view(rnd, viewer_sid, session=None):
 
     my_seat = seat_at(rnd, my_idx) if my_idx >= 0 else None
     is_listening = bool(my_seat and my_seat.get("listening"))
+    is_tenpai_now = bool(my_seat and is_tenpai(my_seat["hand"], my_seat["melds"]))
     listening_discards = []
     if my_seat and is_listening:
         listening_discards = [tile_obj(t) for t in safe_discards_for_listening(my_seat["hand"], my_seat["melds"])]
@@ -1277,6 +1286,7 @@ def build_client_view(rnd, viewer_sid, session=None):
         "mySeat": my_idx,
         "canDiscard": can_discard,
         "canDeclareTing": can_declare_ting(rnd, my_idx) if my_idx >= 0 else False,
+        "isTenpai": is_tenpai_now,
         "isListening": is_listening,
         "listeningDiscards": listening_discards,
         "waitingTiles": waiting_preview,
