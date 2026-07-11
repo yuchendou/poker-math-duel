@@ -84,6 +84,37 @@ def _can_form_melds(counts):
     return False
 
 
+def _can_form_exact_melds(counts, needed):
+    """恰好組成 needed 組面子（順子或刻子）。"""
+    if needed == 0:
+        return not counts
+    if not counts:
+        return False
+    first = min(counts.keys(), key=tile_sort_key)
+    if counts[first] >= 3:
+        c = counts.copy()
+        c[first] -= 3
+        if c[first] == 0:
+            del c[first]
+        if _can_form_exact_melds(c, needed - 1):
+            return True
+    if first[0] in SUITS_NUM:
+        num = int(first[1])
+        if num <= 7:
+            t2, t3 = f"{first[0]}{num + 1}", f"{first[0]}{num + 2}"
+            if counts.get(t2, 0) > 0 and counts.get(t3, 0) > 0:
+                c = counts.copy()
+                c[first] -= 1
+                c[t2] -= 1
+                c[t3] -= 1
+                for k in (first, t2, t3):
+                    if c.get(k, 0) == 0:
+                        c.pop(k, None)
+                if _can_form_exact_melds(c, needed - 1):
+                    return True
+    return False
+
+
 def can_win_tiles(tiles):
     if len(tiles) % 3 != 2:
         return False
@@ -100,6 +131,7 @@ def can_win_tiles(tiles):
 
 
 def all_tiles_for_win(hand, melds, extra=None):
+    """合併手牌與面子（槓算一組刻子＝3 張）。"""
     tiles = list(hand)
     if extra:
         tiles.append(extra)
@@ -107,13 +139,35 @@ def all_tiles_for_win(hand, melds, extra=None):
         if m["type"] == "chi":
             tiles.extend(m["tiles"])
         elif m["type"] in ("pon", "minkong", "jiagang", "ankong"):
-            n = 4 if m["type"] in ("minkong", "jiagong", "ankong") else 3
-            tiles.extend([m["tile"]] * n)
+            tiles.extend([m["tile"]] * 3)
     return tiles
 
 
 def can_win(hand, melds, extra=None):
-    return can_win_tiles(all_tiles_for_win(hand, melds, extra))
+    """
+    台灣 16 張胡牌：手牌 + 胡牌 = 5 組面子 + 1 對眼牌。
+    已吃碰槓的面子算在 melds 裡，剩餘手牌須能湊齊其餘面子與將牌。
+    """
+    tiles = list(hand)
+    if extra:
+        tiles.append(extra)
+    exposed = len(melds)
+    needed_melds = 5 - exposed
+    if needed_melds < 0:
+        return False
+    expected = needed_melds * 3 + 2
+    if len(tiles) != expected:
+        return False
+    counts = Counter(tiles)
+    for pair in list(counts.keys()):
+        if counts[pair] >= 2:
+            c = counts.copy()
+            c[pair] -= 2
+            if c[pair] == 0:
+                del c[pair]
+            if _can_form_exact_melds(c, needed_melds):
+                return True
+    return False
 
 
 def is_menqing(melds):

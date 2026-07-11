@@ -7,6 +7,7 @@ let mjDiscardSeq = 0;
 let mjFlyTimer = null;
 let mjDiscardQueue = [];
 let mjDiscardAnimating = false;
+let mjRoundEnded = false;
 
 const WAN_NUM = ['一', '二', '三', '四', '五', '六', '七', '八', '九'];
 const LABEL_TO_ID = {
@@ -310,6 +311,7 @@ function processDiscardQueue() {
 }
 
 function showDiscardFly(state) {
+  if (mjRoundEnded || state?.winner) return;
   if (!state?.lastDiscard) return;
   const count = getDiscardSeq(state);
   if (count <= mjDiscardSeq) return;
@@ -507,18 +509,35 @@ function showHandEndButtons(session) {
   }
 }
 
-function renderPaymentHtml(payments, chipPerTai, chipBase) {
-  if (!payments?.length) return '';
+function renderPaymentHtml(payments, chipPerTai, chipBase, tai) {
+  if (!payments?.length) {
+    const formula = tai != null ? `（${tai}台×${chipPerTai}+${chipBase}）` : '';
+    return `<div class="mj-payment-box mj-payment-empty"><p>本局籌碼結算中${formula}…</p></div>`;
+  }
   const lines = payments.map((p) => {
     const cls = p.delta > 0 ? 'mj-pay-win' : 'mj-pay-lose';
-    return `<li class="${cls}">${p.name}：${formatChip(p.delta)} <span class="mj-pay-note">${p.reason || ''}</span></li>`;
+    const sign = p.delta > 0 ? '+' : '';
+    return `<li class="${cls}"><strong>${p.name}</strong>：${sign}${formatChip(p.delta)} <span class="mj-pay-note">${p.reason || ''}</span></li>`;
   }).join('');
+  const perHand = tai != null ? tai * chipPerTai + chipBase : null;
+  const formula = perHand != null
+    ? `<p class="mj-payment-formula">單家應付／實收基準：<strong>${perHand}</strong> 元（${tai}台×${chipPerTai}+${chipBase}）</p>`
+    : '';
   return `
     <div class="mj-payment-box">
-      <p class="mj-payment-title">本局籌碼（台${chipPerTai}／底${chipBase}）</p>
+      <p class="mj-payment-title">💰 本局籌碼結算</p>
+      ${formula}
       <ul class="mj-payment-list">${lines}</ul>
     </div>
   `;
+}
+
+function renderMyWinAmount(payments, socketId) {
+  const mine = (payments || []).find((p) => p.id === socketId);
+  if (!mine) return '';
+  const cls = mine.delta > 0 ? 'mj-my-win-pos' : 'mj-my-win-neg';
+  const label = mine.delta > 0 ? '你贏了' : '你付了';
+  return `<p class="mj-my-win-amount ${cls}">${label} <strong>${formatChip(Math.abs(mine.delta))}</strong></p>`;
 }
 
 function renderSettlement(data, socket) {
@@ -563,6 +582,7 @@ function bindMahjong(socket, panels, showPanel) {
 
   socket.on('game:mahjong-new-round', (state) => {
     mjState = state;
+    mjRoundEnded = false;
     mjSelectedTile = null;
     mjDiscardSeq = getDiscardSeq(state);
     mjDiscardQueue = [];
@@ -581,64 +601,67 @@ function bindMahjong(socket, panels, showPanel) {
 
   socket.on('game:mahjong-update', (state) => {
     mjState = state;
+    if (mjRoundEnded || state.winner) return;
     renderMahjong(state);
   });
 
-  socket.on('game:mahjong-win', (state) => {
-    mjState = state;
-    renderMahjong(state);
+  function showMahjongWinResult(state, socket) {
+    mjRoundEnded = true;
     hideClaimActions();
     const info = state.winInfo || {};
     const el = mjEl('mjRoundResult');
+    if (!el) return;
     el.classList.remove('hidden');
     const session = state.session || {};
-    const payHtml = renderPaymentHtml(
-      info.payments,
-      session.chipPerTai || 100,
-      session.chipBase || 50,
-    );
+    const chipPerTai = session.chipPerTai || 100;
+    const chipBase = session.chipBase || 50;
+    const payHtml = renderPaymentHtml(info.payments, chipPerTai, chipBase, info.tai);
+    const myAmountHtml = renderMyWinAmount(info.payments, socket.id);
 
     if (state.winner === 'draw') {
-      el.innerHTML = `<p>${info.message || '流局'}</p>${payHtml}`;
+      el.innerHTML = `<p class="winner">流局</p><p>${info.message || ''}</p>${payHtml}`;
       showHandEndButtons(session);
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       return;
     }
 
     const taiHtml = (info.taiItems || []).map((t) => `<li>${t}</li>`).join('');
-      const isMe = info.winnerId === socket.id;
-      const handRow = document.createElement('div');
-      handRow.className = 'mj-win-tiles';
-      appendTileRow(handRow, info.hand || [], { size: 'sm' });
-      const flowerRow = document.createElement('div');
-      flowerRow.className = 'mj-win-tiles';
-      appendTileRow(flowerRow, info.flowers || [], { size: 'sm' });
-      const meldWrap = document.createElement('div');
-      meldWrap.className = 'mj-win-melds';
-      (info.melds || []).forEach((m) => {
-        if (typeof m === 'string') {
-          const legacy = document.createElement('div');
-          legacy.className = 'mj-meld-legacy';
-          legacy.textContent = m;
-          meldWrap.appendChild(legacy);
-        } else {
-          meldWrap.appendChild(renderMeldGroup(m));
-        }
-      });
+    const isMe = info.winnerId === socket.id;
+    const handRow = document.createElement('div');
+    handRow.className = 'mj-win-tiles';
+    appendTileRow(handRow, info.hand || [], { size: 'sm' });
+    const flowerRow = document.createElement('div');
+    flowerRow.className = 'mj-win-tiles';
+    appendTileRow(flowerRow, info.flowers || [], { size: 'sm' });
+    const meldWrap = document.createElement('div');
+    meldWrap.className = 'mj-win-melds';
+    (info.melds || []).forEach((m) => {
+      if (typeof m === 'string') {
+        const legacy = document.createElement('div');
+        legacy.className = 'mj-meld-legacy';
+        legacy.textContent = m;
+        meldWrap.appendChild(legacy);
+      } else {
+        meldWrap.appendChild(renderMeldGroup(m));
+      }
+    });
 
-      el.innerHTML = `
-        <p class="winner">${isMe ? '🎉 你胡牌了！' : `🎉 ${info.winnerName} 胡牌！`}</p>
-        <p>${info.message || ''}</p>
-        <p class="mj-win-label">手牌</p>
-        <p class="mj-win-label">花牌</p>
-        <p class="mj-win-label">面子</p>
-        <ul class="mj-tai-list">${taiHtml}</ul>
-        <p class="mj-tai-total">共 <strong>${info.tai || 0}</strong> 台</p>
-        ${payHtml}
-      `;
-      const labels = el.querySelectorAll('.mj-win-label');
-      labels[0]?.insertAdjacentElement('afterend', handRow);
-      labels[1]?.insertAdjacentElement('afterend', flowerRow);
-      labels[2]?.insertAdjacentElement('afterend', meldWrap);
+    el.innerHTML = `
+      <p class="winner">${isMe ? '🎉 你胡牌了！' : `🎉 ${info.winnerName} 胡牌！`}</p>
+      ${myAmountHtml}
+      <p>${info.message || ''}</p>
+      <p class="mj-win-label">胡牌牌型（5組面子+1對眼牌）</p>
+      <p class="mj-win-label">手牌</p>
+      <p class="mj-win-label">花牌</p>
+      <p class="mj-win-label">面子</p>
+      <ul class="mj-tai-list">${taiHtml}</ul>
+      <p class="mj-tai-total">共 <strong>${info.tai || 0}</strong> 台</p>
+      ${payHtml}
+    `;
+    const labels = el.querySelectorAll('.mj-win-label');
+    labels[1]?.insertAdjacentElement('afterend', handRow);
+    labels[2]?.insertAdjacentElement('afterend', flowerRow);
+    labels[3]?.insertAdjacentElement('afterend', meldWrap);
 
     if (session.jiangComplete) {
       const note = document.createElement('p');
@@ -647,6 +670,13 @@ function bindMahjong(socket, panels, showPanel) {
       el.appendChild(note);
     }
     showHandEndButtons(session);
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  socket.on('game:mahjong-win', (state) => {
+    mjState = state;
+    renderMahjong(state);
+    showMahjongWinResult(state, socket);
   });
 
   socket.on('game:mahjong-settled', (data) => {
@@ -754,6 +784,7 @@ function renderLastDrawTile(container, ref, prefix) {
 
 function renderMahjong(state) {
   if (!state) return;
+  if (state.winner && mjRoundEnded) return;
 
   mjEl('mjWallCount').textContent = state.wallCount ?? 0;
   mjEl('mjDealerWind').textContent = state.dealerWind || '東';
