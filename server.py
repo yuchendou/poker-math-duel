@@ -416,11 +416,21 @@ def start_bulls_round(room, code):
 
 
 def _emit_mahjong_to_humans(room, code, event, extra=None):
+    session = room.get("mahjongSession")
     for p in room["players"]:
-        view = mj.build_client_view(room["round"], p["id"])
+        view = mj.build_client_view(room["round"], p["id"], session)
         if extra:
             view.update(extra)
         socketio.emit(event, view, to=p["id"])
+
+
+def _finish_mahjong_hand(room, code):
+    """手局結束：結算籌碼、更新圈風莊家。"""
+    rnd = room["round"]
+    session = room.get("mahjongSession")
+    if session and rnd:
+        mj.apply_hand_to_session(session, rnd)
+    room["gameState"] = "round-end"
 
 
 def _mahjong_loop(room, code, initial=False):
@@ -429,10 +439,7 @@ def _mahjong_loop(room, code, initial=False):
     while True:
         status = mj.advance_game(rnd)
         if status == "ended":
-            if rnd.get("winner") == "draw":
-                room["gameState"] = "round-end"
-            elif rnd.get("winner"):
-                room["gameState"] = "round-end"
+            _finish_mahjong_hand(room, code)
             _emit_mahjong_to_humans(room, code, "game:mahjong-win")
             return
         if status == "wait":
@@ -442,9 +449,17 @@ def _mahjong_loop(room, code, initial=False):
 
 
 def start_mahjong_round(room, code):
-    streak = room.get("dealerStreak", 0)
+    if not room.get("mahjongSession"):
+        room["mahjongSession"] = mj.create_mahjong_session()
+    session = room["mahjongSession"]
     room["gameState"] = "playing"
-    room["round"] = mj.start_round(room["players"], dealer_streak=streak)
+    room["round"] = mj.start_round(
+        room["players"],
+        dealer=session["dealer"],
+        dealer_streak=session["dealerStreak"],
+        round_wind=session["roundWind"],
+    )
+    mj.init_session_scores(session, room["round"])
     _mahjong_loop(room, code, initial=True)
 
 
@@ -759,8 +774,9 @@ def on_mahjong_action(data):
             return
         mj.apply_zimo(rnd, idx)
         rnd["winner"] = seat["id"]
+        rnd["winnerSeat"] = idx
         rnd["winInfo"] = mj.build_win_info(rnd, idx)
-        room["gameState"] = "round-end"
+        _finish_mahjong_hand(room, code)
         emit("game:mahjong-self-win", {"message": "🎉 你胡牌了！自摸！"})
         _emit_mahjong_to_humans(room, code, "game:mahjong-win")
         broadcast_room(room)
@@ -835,6 +851,64 @@ def on_mahjong_action(data):
         return
 
     emit("game:mahjong-error", {"message": "不支援的操作"})
+
+
+@socketio.on("game:mahjong-next-hand")
+def on_mahjong_next_hand():
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room or room["gameType"] != "mahjong":
+        return
+    player = next((p for p in room["players"] if p["id"] == sid), None)
+    if not player or not player.get("isHost"):
+        emit("error", {"message": "只有房主可以開下一局"})
+        return
+    if room["gameState"] != "round-end":
+        emit("error", {"message": "目前不是局間狀態"})
+        return
+    session = room.get("mahjongSession")
+    if not session:
+        emit("error", {"message": "沒有進行中的將"})
+        return
+    if session.get("jiangComplete"):
+        emit("error", {"message": "東南西北風已打完，請結算"})
+        return
+    room["gameState"] = "playing"
+    room["round"] = mj.start_round(
+        room["players"],
+        dealer=session["dealer"],
+        dealer_streak=session["dealerStreak"],
+        round_wind=session["roundWind"],
+    )
+    mj.init_session_scores(session, room["round"])
+    _mahjong_loop(room, code, initial=True)
+    broadcast_room(room)
+
+
+@socketio.on("game:mahjong-settle")
+def on_mahjong_settle():
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room or room["gameType"] != "mahjong":
+        return
+    if room["gameState"] != "round-end":
+        emit("error", {"message": "請在本局結束後再結算"})
+        return
+    session = room.get("mahjongSession")
+    if not session:
+        emit("error", {"message": "沒有進行中的將"})
+        return
+    human_ids = {p["id"] for p in room["players"]}
+    settlement = mj.build_settlement(session, human_ids, room.get("round"))
+    room["gameState"] = "waiting"
+    room["round"] = None
+    room["mahjongSession"] = None
+    socketio.emit("game:mahjong-settled", settlement, room=code)
+    broadcast_room(room)
 
 
 @socketio.on("game:mahjong-hu")

@@ -183,11 +183,15 @@
     <section id="mahjongGame" class="panel hidden mj-panel">
       <div class="mj-rules">
         <p>台灣麻將 16 張：<strong>吃、碰、明槓、暗槓、加槓、胡牌、搶槓</strong>，2 人連線 + 2 電腦。</p>
-        <p>計台採<strong>牌型取最高</strong>（如字一色不再另計碰碰胡），另加莊家、門清自摸、花台、槓上開花等狀況台。</p>
+        <p>計台採<strong>牌型取最高</strong>，籌碼<strong>台100／底50</strong>，打完<strong>東南西北一將</strong>可結算。</p>
       </div>
       <div class="mj-info-bar">
+        <span>圈風：<strong id="mjRoundWind">東風圈</strong></span>
         <span>莊家：<strong id="mjDealerWind">東</strong></span>
+        <span>第 <strong id="mjHandNo">0</strong> 局</span>
+        <span>籌碼：<strong id="mjChipRule">台100／底50</strong></span>
       </div>
+      <div id="mjScoreBar" class="mj-score-bar"></div>
       <p id="mjTurnStatus" class="mj-turn-status">等待開始...</p>
       <div class="mj-table-room">
         <div class="mj-felt">
@@ -222,7 +226,11 @@
         <button id="btnMahjongDiscard" type="button" class="btn btn-secondary">打出選取的牌</button>
       </div>
       <div id="mjRoundResult" class="round-result hidden"></div>
-      <button id="btnMahjongNext" type="button" class="btn btn-secondary hidden">下一局（房主）</button>
+      <div class="mj-hand-end-actions">
+        <button id="btnMahjongNext" type="button" class="btn btn-primary hidden">下一局（房主）</button>
+        <button id="btnMahjongSettle" type="button" class="btn btn-secondary hidden">不玩了，結算</button>
+      </div>
+      <div id="mjSettlement" class="mj-settlement hidden"></div>
     </section>
 
     <!-- Block Blast 解題 -->
@@ -290,10 +298,10 @@
     </section>
   </main>
 
-  <script src="./config.js?v=9"></script>
+  <script src="./config.js?v=10"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
-  <script src="./blockblast.js?v=9"></script>
-  <script src="./mahjong.js?v=9"></script>
-  <script src="./app.js?v=9"></script>
+  <script src="./blockblast.js?v=10"></script>
+  <script src="./mahjong.js?v=10"></script>
+  <script src="./app.js?v=10"></script>
 </body>
 </html>

@@ -257,6 +257,97 @@ function seatPositionClass(seatIdx, mySeat) {
   return ['mj-pos-self', 'mj-pos-right', 'mj-pos-top', 'mj-pos-left'][rel];
 }
 
+function seatPositionClass(seatIdx, mySeat) {
+  const rel = (seatIdx - mySeat + 4) % 4;
+  return ['mj-pos-self', 'mj-pos-right', 'mj-pos-top', 'mj-pos-left'][rel];
+}
+
+function formatChip(n) {
+  if (n > 0) return `+${n}`;
+  return String(n);
+}
+
+function renderSessionBar(session) {
+  const bar = mjEl('mjScoreBar');
+  if (!bar) return;
+  if (!session) {
+    bar.innerHTML = '';
+    bar.classList.add('hidden');
+    return;
+  }
+  bar.classList.remove('hidden');
+  bar.innerHTML = (session.scores || []).map((s) => {
+    const cls = s.isMe ? 'mj-score-me' : (s.isAI ? 'mj-score-ai' : '');
+    const sign = s.score > 0 ? 'pos' : (s.score < 0 ? 'neg' : '');
+    return `<span class="mj-score-item ${cls} ${sign}">${s.wind} ${s.name}：${formatChip(s.score)}</span>`;
+  }).join('');
+}
+
+function renderSessionInfo(session) {
+  if (!session) return;
+  const rw = mjEl('mjRoundWind');
+  const hn = mjEl('mjHandNo');
+  const cr = mjEl('mjChipRule');
+  if (rw) rw.textContent = session.roundWindName || '東風圈';
+  if (hn) hn.textContent = session.handCount ?? 0;
+  if (cr) cr.textContent = `台${session.chipPerTai}／底${session.chipBase}`;
+  renderSessionBar(session);
+}
+
+function showHandEndButtons(session) {
+  const nextBtn = mjEl('btnMahjongNext');
+  const settleBtn = mjEl('btnMahjongSettle');
+  if (settleBtn) settleBtn.classList.remove('hidden');
+  if (nextBtn) {
+    const canNext = window.mahjongIsHost && session?.canNextHand !== false;
+    nextBtn.classList.toggle('hidden', !canNext);
+    if (session?.jiangComplete) {
+      nextBtn.classList.add('hidden');
+    }
+  }
+}
+
+function renderPaymentHtml(payments, chipPerTai, chipBase) {
+  if (!payments?.length) return '';
+  const lines = payments.map((p) => {
+    const cls = p.delta > 0 ? 'mj-pay-win' : 'mj-pay-lose';
+    return `<li class="${cls}">${p.name}：${formatChip(p.delta)} <span class="mj-pay-note">${p.reason || ''}</span></li>`;
+  }).join('');
+  return `
+    <div class="mj-payment-box">
+      <p class="mj-payment-title">本局籌碼（台${chipPerTai}／底${chipBase}）</p>
+      <ul class="mj-payment-list">${lines}</ul>
+    </div>
+  `;
+}
+
+function renderSettlement(data, socket) {
+  const el = mjEl('mjSettlement');
+  if (!el) return;
+  el.classList.remove('hidden');
+  const rows = (data.scores || []).map((r) => {
+    const isMe = r.id === socket.id;
+    const cls = r.score > 0 ? 'pos' : (r.score < 0 ? 'neg' : '');
+    const tag = isMe ? '（你）' : (r.isHuman ? '' : ' 🤖');
+    return `<tr class="${cls} ${isMe ? 'mj-settle-me' : ''}"><td>${r.name}${tag}</td><td>${formatChip(r.score)}</td></tr>`;
+  }).join('');
+  const history = (data.history || []).map((h) => {
+    const pay = (h.payments || []).map((p) => `${p.name}${formatChip(p.delta)}`).join('、');
+    return `<li>第${h.handNo}局：${h.winner} ${h.tai ? `${h.tai}台` : '流局'} ${pay ? `（${pay}）` : ''}</li>`;
+  }).join('');
+  el.innerHTML = `
+    <h3 class="mj-settle-title">💰 一將結算</h3>
+    <p class="mj-settle-meta">共 ${data.handCount} 局 · 台${data.chipPerTai}／底${data.chipBase}${data.jiangComplete ? ' · 東南西北打完' : ' · 提前結束'}</p>
+    <table class="mj-settle-table"><thead><tr><th>玩家</th><th>淨收支</th></tr></thead><tbody>${rows}</tbody></table>
+    ${history ? `<details class="mj-settle-history"><summary>各局紀錄</summary><ul>${history}</ul></details>` : ''}
+    <button type="button" class="btn btn-primary mj-settle-back" id="btnMahjongSettleBack">回大廳</button>
+  `;
+  mjEl('btnMahjongSettleBack')?.addEventListener('click', () => {
+    el.classList.add('hidden');
+    if (window.showGameSelect) window.showGameSelect();
+  });
+}
+
 function bindMahjong(socket, panels, showPanel) {
   mjSocket = socket;
 
@@ -270,7 +361,9 @@ function bindMahjong(socket, panels, showPanel) {
     mjSelectedTile = null;
     showPanel(panels.mahjongGame);
     mjEl('mjRoundResult').classList.add('hidden');
+    mjEl('mjSettlement')?.classList.add('hidden');
     mjEl('btnMahjongNext').classList.add('hidden');
+    mjEl('btnMahjongSettle').classList.add('hidden');
     mjEl('mjFeedback').classList.add('hidden');
     renderMahjong(state);
   });
@@ -287,10 +380,20 @@ function bindMahjong(socket, panels, showPanel) {
     const info = state.winInfo || {};
     const el = mjEl('mjRoundResult');
     el.classList.remove('hidden');
+    const session = state.session || {};
+    const payHtml = renderPaymentHtml(
+      info.payments,
+      session.chipPerTai || 100,
+      session.chipBase || 50,
+    );
+
     if (state.winner === 'draw') {
-      el.innerHTML = `<p>${info.message || '流局'}</p>`;
-    } else {
-      const taiHtml = (info.taiItems || []).map((t) => `<li>${t}</li>`).join('');
+      el.innerHTML = `<p>${info.message || '流局'}</p>${payHtml}`;
+      showHandEndButtons(session);
+      return;
+    }
+
+    const taiHtml = (info.taiItems || []).map((t) => `<li>${t}</li>`).join('');
       const isMe = info.winnerId === socket.id;
       const handRow = document.createElement('div');
       handRow.className = 'mj-win-tiles';
@@ -319,13 +422,27 @@ function bindMahjong(socket, panels, showPanel) {
         <p class="mj-win-label">面子</p>
         <ul class="mj-tai-list">${taiHtml}</ul>
         <p class="mj-tai-total">共 <strong>${info.tai || 0}</strong> 台</p>
+        ${payHtml}
       `;
       const labels = el.querySelectorAll('.mj-win-label');
       labels[0]?.insertAdjacentElement('afterend', handRow);
       labels[1]?.insertAdjacentElement('afterend', flowerRow);
       labels[2]?.insertAdjacentElement('afterend', meldWrap);
+
+    if (session.jiangComplete) {
+      const note = document.createElement('p');
+      note.className = 'mj-jiang-done';
+      note.textContent = '🀄 東南西北風已打完！請按「不玩了，結算」。';
+      el.appendChild(note);
     }
-    if (window.mahjongIsHost) mjEl('btnMahjongNext').classList.remove('hidden');
+    showHandEndButtons(session);
+  });
+
+  socket.on('game:mahjong-settled', (data) => {
+    mjEl('btnMahjongNext')?.classList.add('hidden');
+    mjEl('btnMahjongSettle')?.classList.add('hidden');
+    mjEl('mjRoundResult')?.classList.add('hidden');
+    renderSettlement(data, socket);
   });
 
   socket.on('game:mahjong-self-win', ({ message }) => {
@@ -425,6 +542,7 @@ function renderMahjong(state) {
 
   mjEl('mjWallCount').textContent = state.wallCount ?? 0;
   mjEl('mjDealerWind').textContent = state.dealerWind || '東';
+  renderSessionInfo(state.session);
 
   const claimTileRef = state.claimTile || state.claimTileId;
   const inClaim = state.phase === 'claim' && (state.canRon || state.canPon || state.canChi?.length);

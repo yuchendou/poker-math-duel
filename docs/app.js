@@ -233,7 +233,12 @@ function bindAllUi() {
 
   bindClick('btnMahjongNext', () => {
     if (!requireSocket()) return;
-    socket.emit('game:start-round');
+    socket.emit('game:mahjong-next-hand');
+  });
+
+  bindClick('btnMahjongSettle', () => {
+    if (!requireSocket()) return;
+    socket.emit('game:mahjong-settle');
   });
 
   bindClick('btnPokerSubmit', submitPoker);

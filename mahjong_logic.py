@@ -171,8 +171,7 @@ def create_seats(human_players):
     return seats
 
 
-def start_round(human_players, dealer_streak=0):
-    dealer = random.randint(0, 3)
+def start_round(human_players, dealer=0, dealer_streak=0, round_wind=0):
     seats = create_seats(human_players)
     wall = create_wall()
     wall = deal_initial(wall, seats, dealer)
@@ -186,14 +185,16 @@ def start_round(human_players, dealer_streak=0):
         "lastDraw": None,
         "lastDiscard": None,
         "discardSeat": None,
+        "payerSeat": None,
         "claim": None,
         "robKong": None,
         "drawFromTail": False,
         "winFlags": {},
         "winner": None,
+        "winnerSeat": None,
         "winInfo": None,
         "discardCount": 0,
-        "roundWind": 0,
+        "roundWind": round_wind,
     }
 
 
@@ -433,9 +434,13 @@ def apply_ron(rnd, seat_idx, tile, qianggang=False):
     rnd["winFlags"] = rnd.get("winFlags") or {}
     if qianggang:
         rnd["winFlags"]["qiangGang"] = True
+        rk = rnd.get("robKong")
+        rnd["payerSeat"] = rk["seat"] if rk else rnd.get("discardSeat")
     else:
         if len(rnd["wall"]) == 0:
             rnd["winFlags"]["heDi"] = True
+        claim = rnd.get("claim")
+        rnd["payerSeat"] = claim["fromSeat"] if claim else rnd.get("discardSeat")
     rnd["winnerSeat"] = seat_idx
     rnd["winTile"] = tile
     rnd["winType"] = "qianggang" if qianggang else "ron"
@@ -947,7 +952,198 @@ def calc_tai(seat, rnd, win_type="zimo", extra_tile=None):
     return tai, items
 
 
-def build_client_view(rnd, viewer_sid):
+# ── 籌碼與一將（東南西北）────────────────────────────────
+
+CHIP_PER_TAI = 100
+CHIP_BASE = 50
+ROUND_WIND_NAMES = ("東", "南", "西", "北")
+
+
+def create_mahjong_session(chip_per_tai=CHIP_PER_TAI, chip_base=CHIP_BASE):
+    return {
+        "roundWind": 0,
+        "dealer": 0,
+        "dealerStreak": 0,
+        "scores": {},
+        "history": [],
+        "handCount": 0,
+        "chipPerTai": chip_per_tai,
+        "chipBase": chip_base,
+        "jiangComplete": False,
+        "active": True,
+    }
+
+
+def init_session_scores(session, rnd):
+    for s in rnd["seats"]:
+        session["scores"].setdefault(s["id"], 0)
+
+
+def _hand_payment_amount(tai, session):
+    return tai * session["chipPerTai"] + session["chipBase"]
+
+
+def calc_hand_payments(rnd, winner_seat_idx, win_info, session):
+    """計算本局四家籌碼變動。自摸三家付；放槍／搶槓由放槍者全賠。"""
+    if winner_seat_idx is None or not win_info:
+        return []
+    tai = win_info.get("tai", 0)
+    win_type = win_info.get("winType", "zimo")
+    amount = _hand_payment_amount(tai, session)
+    seats = rnd["seats"]
+    deltas = {i: 0 for i in range(4)}
+
+    if win_type == "zimo":
+        for i in range(4):
+            if i != winner_seat_idx:
+                deltas[i] = -amount
+        deltas[winner_seat_idx] = amount * 3
+        payer_note = "自摸（三家各付）"
+    else:
+        payer = rnd.get("payerSeat")
+        if payer is None or payer == winner_seat_idx:
+            payer = rnd.get("discardSeat", 0)
+        total = amount * 3
+        deltas[payer] = -total
+        deltas[winner_seat_idx] = total
+        payer_note = "放槍全賠" if win_type == "ron" else "搶槓全賠"
+
+    payments = []
+    for i in range(4):
+        s = seats[i]
+        delta = deltas[i]
+        if delta == 0:
+            continue
+        reason = payer_note if delta > 0 else (
+            f"付給{s['name']}" if delta < 0 else ""
+        )
+        payments.append({
+            "seatIndex": i,
+            "id": s["id"],
+            "name": s["name"],
+            "isAI": s["isAI"],
+            "delta": delta,
+            "reason": reason,
+        })
+    return payments
+
+
+def advance_dealer_and_wind(session, rnd, winner):
+    """手局結束後推進莊家與圈風。"""
+    dealer = rnd["dealer"]
+    if winner == "draw":
+        session["dealerStreak"] = session.get("dealerStreak", 0) + 1
+        session["dealer"] = dealer
+        return
+
+    winner_seat = rnd.get("winnerSeat")
+    if winner_seat is None:
+        return
+
+    if winner_seat == dealer:
+        session["dealerStreak"] = session.get("dealerStreak", 0) + 1
+        session["dealer"] = dealer
+        return
+
+    session["dealerStreak"] = 0
+    next_dealer = (dealer + 1) % 4
+    if next_dealer == 0:
+        session["roundWind"] = session.get("roundWind", 0) + 1
+        if session["roundWind"] >= 4:
+            session["jiangComplete"] = True
+    session["dealer"] = next_dealer
+
+
+def apply_hand_to_session(session, rnd):
+    """結算本局籌碼並更新莊家／圈風。"""
+    init_session_scores(session, rnd)
+    winner = rnd.get("winner")
+    session["handCount"] = session.get("handCount", 0) + 1
+
+    if winner != "draw" and rnd.get("winInfo") and rnd.get("winnerSeat") is not None:
+        payments = calc_hand_payments(rnd, rnd["winnerSeat"], rnd["winInfo"], session)
+        rnd["winInfo"]["payments"] = payments
+        for p in payments:
+            session["scores"][p["id"]] = session["scores"].get(p["id"], 0) + p["delta"]
+        session["history"].append({
+            "handNo": session["handCount"],
+            "winner": rnd["winInfo"].get("winnerName"),
+            "tai": rnd["winInfo"].get("tai", 0),
+            "winType": rnd["winInfo"].get("winType"),
+            "payments": payments,
+        })
+    else:
+        session["history"].append({
+            "handNo": session["handCount"],
+            "winner": "流局",
+            "tai": 0,
+            "winType": "draw",
+            "payments": [],
+        })
+
+    advance_dealer_and_wind(session, rnd, winner)
+    rnd["roundWind"] = session["roundWind"]
+
+
+def _session_view(session, rnd, viewer_sid):
+    if not session:
+        return None
+    seats = rnd.get("seats") or []
+    score_rows = []
+    for s in seats:
+        score_rows.append({
+            "id": s["id"],
+            "name": s["name"],
+            "wind": WIND_NAMES[s["seatIndex"]],
+            "isAI": s["isAI"],
+            "isMe": s["id"] == viewer_sid,
+            "score": session["scores"].get(s["id"], 0),
+        })
+    rw = session.get("roundWind", 0)
+    wind_label = f"{ROUND_WIND_NAMES[rw]}風圈" if rw < 4 else "一將打完"
+    return {
+        "roundWind": rw,
+        "roundWindName": wind_label,
+        "dealerStreak": session.get("dealerStreak", 0),
+        "handCount": session.get("handCount", 0),
+        "chipPerTai": session["chipPerTai"],
+        "chipBase": session["chipBase"],
+        "scores": score_rows,
+        "jiangComplete": session.get("jiangComplete", False),
+        "canNextHand": not session.get("jiangComplete", False),
+    }
+
+
+def build_settlement(session, human_ids, rnd=None):
+    """一將結束或玩家提前結算。"""
+    name_map = {}
+    if rnd and rnd.get("seats"):
+        for s in rnd["seats"]:
+            name_map[s["id"]] = s["name"]
+    for h in session.get("history", []):
+        for p in h.get("payments", []):
+            name_map.setdefault(p["id"], p["name"])
+    rows = []
+    for sid, score in session.get("scores", {}).items():
+        rows.append({
+            "id": sid,
+            "name": name_map.get(sid, "玩家"),
+            "score": score,
+            "isHuman": sid in human_ids,
+        })
+    rows.sort(key=lambda r: -r["score"])
+    return {
+        "scores": rows,
+        "history": session.get("history", []),
+        "handCount": session.get("handCount", 0),
+        "chipPerTai": session.get("chipPerTai", CHIP_PER_TAI),
+        "chipBase": session.get("chipBase", CHIP_BASE),
+        "jiangComplete": session.get("jiangComplete", False),
+        "roundWind": session.get("roundWind", 0),
+    }
+
+
+def build_client_view(rnd, viewer_sid, session=None):
     viewer = seat_by_id(rnd, viewer_sid)
     my_idx = viewer["seatIndex"] if viewer else -1
     claim = rnd.get("claim")
@@ -1013,6 +1209,7 @@ def build_client_view(rnd, viewer_sid):
         "discardSeat": rnd.get("discardSeat"),
         "winner": rnd.get("winner"),
         "winInfo": rnd.get("winInfo"),
+        "session": _session_view(session, rnd, viewer_sid),
     }
 
 
