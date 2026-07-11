@@ -214,6 +214,34 @@ def meld_label(m):
     return f"{kind}{t}"
 
 
+def tile_obj(tile_id):
+    return {"id": tile_id, "label": TILE_LABELS[tile_id]}
+
+
+def meld_to_client(m, viewer_is_owner):
+    kind = {"chi": "吃", "pon": "碰", "minkong": "明槓", "ankong": "暗槓", "jiagang": "加槓"}[m["type"]]
+    if m["type"] == "chi":
+        return {
+            "type": m["type"],
+            "kind": kind,
+            "tiles": [tile_obj(t) for t in m["tiles"]],
+        }
+    tile = m["tile"]
+    count = 4 if m["type"] in ("minkong", "ankong", "jiagang") else 3
+    if m["type"] == "ankong" and not viewer_is_owner:
+        return {
+            "type": m["type"],
+            "kind": kind,
+            "faceDown": True,
+            "tiles": [{"id": "back", "label": "暗槓"}] * count,
+        }
+    return {
+        "type": m["type"],
+        "kind": kind,
+        "tiles": [tile_obj(tile)] * count,
+    }
+
+
 def _chi_options(hand, tile):
     if tile[0] not in SUITS_NUM:
         return []
@@ -817,10 +845,10 @@ def build_client_view(rnd, viewer_sid):
             "isAI": s["isAI"],
             "isMe": is_me,
             "handCount": len(s["hand"]),
-            "flowers": [TILE_LABELS[f] for f in s["flowers"]],
-            "discards": [TILE_LABELS[t] for t in s["discards"]],
-            "melds": [meld_label(m) for m in s["melds"]],
-            "hand": [{"id": t, "label": TILE_LABELS[t]} for t in s["hand"]] if is_me else None,
+            "flowers": [tile_obj(f) for f in s["flowers"]],
+            "discards": [tile_obj(t) for t in s["discards"]],
+            "melds": [meld_to_client(m, is_me) for m in s["melds"]],
+            "hand": [tile_obj(t) for t in s["hand"]] if is_me else None,
         })
 
     my_claim_opts = get_claim_options(rnd, my_idx) if my_idx >= 0 else []
@@ -858,10 +886,11 @@ def build_client_view(rnd, viewer_sid):
             for a in my_self if a["action"] == "jiagang"
         ],
         "canQianggang": my_rob_opts,
-        "claimTile": TILE_LABELS[claim["tile"]] if claim else None,
-        "robKongTile": TILE_LABELS[rob["tile"]] if rob and not rob.get("resolved") else None,
-        "lastDraw": TILE_LABELS[rnd["lastDraw"]] if rnd.get("lastDraw") else None,
-        "lastDiscard": TILE_LABELS[rnd["lastDiscard"]] if rnd.get("lastDiscard") else None,
+        "claimTile": tile_obj(claim["tile"]) if claim else None,
+        "claimTileId": claim["tile"] if claim else None,
+        "robKongTile": tile_obj(rob["tile"]) if rob and not rob.get("resolved") else None,
+        "lastDraw": tile_obj(rnd["lastDraw"]) if rnd.get("lastDraw") else None,
+        "lastDiscard": tile_obj(rnd["lastDiscard"]) if rnd.get("lastDiscard") else None,
         "winner": rnd.get("winner"),
         "winInfo": rnd.get("winInfo"),
     }
@@ -879,9 +908,9 @@ def build_win_info(rnd, seat_idx):
         "zimo": win_type == "zimo",
         "tai": tai,
         "taiItems": tai_items,
-        "hand": [TILE_LABELS[t] for t in sort_tiles(seat["hand"] + ([extra] if extra and extra not in seat["hand"] else []))],
-        "flowers": [TILE_LABELS[f] for f in seat["flowers"]],
-        "melds": [meld_label(m) for m in seat["melds"]],
+        "hand": [tile_obj(t) for t in sort_tiles(seat["hand"] + ([extra] if extra and extra not in seat["hand"] else []))],
+        "flowers": [tile_obj(f) for f in seat["flowers"]],
+        "melds": [meld_to_client(m, True) for m in seat["melds"]],
         "message": f"{seat['name']} {('自摸' if win_type == 'zimo' else '胡牌' if win_type == 'ron' else '搶槓')}！共 {tai} 台",
     }
 

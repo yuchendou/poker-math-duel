@@ -180,19 +180,28 @@
     </section>
 
     <!-- 台灣麻將 -->
-    <section id="mahjongGame" class="panel hidden">
+    <section id="mahjongGame" class="panel hidden mj-panel">
       <div class="mj-rules">
         <p>台灣麻將完整規則：<strong>吃、碰、明槓、暗槓、加槓、胡牌、搶槓</strong>，2 人連線 + 2 電腦。</p>
         <p>別人打牌時可按 <strong>胡／碰／明槓／吃</strong>；輪到你時可 <strong>自摸、暗槓、加槓</strong> 再打牌。加槓時別人可搶槓胡。</p>
       </div>
       <div class="mj-info-bar">
         <span>莊家：<strong id="mjDealerWind">東</strong></span>
-        <span>牌牆剩餘：<strong id="mjWallCount">0</strong> 張</span>
       </div>
       <p id="mjTurnStatus" class="mj-turn-status">等待開始...</p>
-      <div id="mjTable" class="mj-table"></div>
-      <p id="mjLastDraw" class="mj-last-draw hidden"></p>
-      <div id="mjHand" class="mj-hand"></div>
+      <div class="mj-table-room">
+        <div class="mj-felt">
+          <div class="mj-center-deco">
+            <span class="mj-wall-pill">牌牆 <strong id="mjWallCount">0</strong> 張</span>
+          </div>
+          <div id="mjTable" class="mj-board"></div>
+        </div>
+      </div>
+      <div class="mj-player-zone">
+        <div id="mjMyTable" class="mj-my-table"></div>
+        <div id="mjLastDraw" class="mj-last-draw hidden"></div>
+        <div id="mjHand" class="mj-hand-rack"></div>
+      </div>
       <p id="mjFeedback" class="feedback hidden"></p>
       <div class="mj-actions mj-claim-actions">
         <button id="btnMahjongRon" type="button" class="btn btn-primary hidden">胡！</button>
@@ -277,10 +286,10 @@
     </section>
   </main>
 
-  <script src="./config.js?v=7"></script>
+  <script src="./config.js?v=8"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
-  <script src="./blockblast.js?v=7"></script>
-  <script src="./mahjong.js?v=7"></script>
-  <script src="./app.js?v=7"></script>
+  <script src="./blockblast.js?v=8"></script>
+  <script src="./mahjong.js?v=8"></script>
+  <script src="./app.js?v=8"></script>
 </body>
 </html>
