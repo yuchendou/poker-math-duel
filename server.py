@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""雙人連線遊戲平台 — 撲克數學、數獨、幾A幾B"""
+"""雙人連線遊戲平台 — 撲克數學、數獨、幾A幾B、台灣麻將"""
 
 import os
 import random
@@ -8,6 +8,8 @@ import re
 from flask import Flask, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit, join_room
 
+import mahjong_logic as mj
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
 
@@ -15,8 +17,19 @@ app = Flask(__name__, static_folder=DOCS_DIR, static_url_path="")
 app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "poker-math-duel")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
-GAME_TYPES = {"poker", "sudoku", "bulls"}
-GAME_LABELS = {"poker": "撲克數學", "sudoku": "雙人數獨", "bulls": "幾A幾B"}
+GAME_TYPES = {"poker", "sudoku", "bulls", "mahjong"}
+GAME_LABELS = {
+    "poker": "撲克數學",
+    "sudoku": "雙人數獨",
+    "bulls": "幾A幾B",
+    "mahjong": "台灣麻將",
+}
+GAME_MAX_HUMANS = {
+    "poker": 2,
+    "sudoku": 2,
+    "bulls": 2,
+    "mahjong": 2,
+}
 
 SUITS = ["♠", "♥", "♦", "♣"]
 RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
@@ -174,19 +187,52 @@ def generate_sudoku_puzzle(clues=36):
     return {"puzzle": puzzle, "solution": solution}
 
 
-def validate_sudoku_grid(player_grid, solution, puzzle):
+def analyze_sudoku_grid(player_grid, solution, puzzle):
+    wrong_cells = []
+    empty_cells = []
     if len(player_grid) != 9 or any(len(row) != 9 for row in player_grid):
-        return False, "格子格式不正確"
+        return {
+            "ok": False,
+            "message": "格子格式不正確",
+            "wrongCells": [],
+            "emptyCells": [],
+        }
     for r in range(9):
         for c in range(9):
             val = player_grid[r][c]
+            if puzzle[r][c] != 0:
+                if not isinstance(val, int) or val != puzzle[r][c]:
+                    return {
+                        "ok": False,
+                        "message": "不能修改題目給定的數字",
+                        "wrongCells": [[r, c]],
+                        "emptyCells": [],
+                    }
+                continue
             if not isinstance(val, int) or val < 1 or val > 9:
-                return False, "還有空格沒填完"
-            if puzzle[r][c] != 0 and val != puzzle[r][c]:
-                return False, "不能修改題目給定的數字"
-            if val != solution[r][c]:
-                return False, "有數字填錯了，再檢查一下"
-    return True, "完成！"
+                empty_cells.append([r, c])
+            elif val != solution[r][c]:
+                wrong_cells.append([r, c])
+
+    if wrong_cells:
+        parts = [f"第{r + 1}行第{c + 1}列" for r, c in wrong_cells[:6]]
+        msg = "填錯了：" + "、".join(parts)
+        if len(wrong_cells) > 6:
+            msg += f"（共 {len(wrong_cells)} 格錯誤）"
+        return {"ok": False, "message": msg, "wrongCells": wrong_cells, "emptyCells": empty_cells}
+    if empty_cells:
+        return {
+            "ok": False,
+            "message": f"還有 {len(empty_cells)} 格沒填完",
+            "wrongCells": [],
+            "emptyCells": empty_cells,
+        }
+    return {"ok": True, "message": "全部正確！你答對了！", "wrongCells": [], "emptyCells": []}
+
+
+def validate_sudoku_grid(player_grid, solution, puzzle):
+    result = analyze_sudoku_grid(player_grid, solution, puzzle)
+    return result["ok"], result["message"]
 
 
 # ── 幾A幾B ──────────────────────────────────────────
@@ -218,15 +264,34 @@ def validate_bulls_number(value):
 
 
 def get_room_state(room):
+    max_h = GAME_MAX_HUMANS.get(room["gameType"], 2)
+    human_count = len(room["players"])
     return {
         "code": room["code"],
         "gameType": room["gameType"],
         "gameLabel": GAME_LABELS.get(room["gameType"], ""),
         "players": room["players"],
-        "isFull": len(room["players"]) == 2,
+        "isFull": human_count >= max_h,
+        "maxHumans": max_h,
         "gameState": room["gameState"],
-        "round": room["round"],
+        "round": _sanitize_round(room.get("round"), room["gameType"]),
     }
+
+
+def _sanitize_round(round_data, game_type):
+    if not round_data:
+        return None
+    if game_type == "bulls" and "secrets" in round_data:
+        return {k: v for k, v in round_data.items() if k != "secrets"}
+    if game_type == "mahjong":
+        return {
+            "dealer": round_data.get("dealer"),
+            "wallCount": len(round_data.get("wall", [])),
+            "winner": round_data.get("winner"),
+        }
+    if game_type == "sudoku" and "solution" in round_data:
+        return {k: v for k, v in round_data.items() if k != "solution"}
+    return round_data
 
 
 def broadcast_room(room):
@@ -287,8 +352,9 @@ def on_join(data):
     if room["gameType"] != game_type:
         emit("error", {"message": f"這是「{GAME_LABELS[room['gameType']]}」房間，請選對遊戲再加入"})
         return
-    if len(room["players"]) >= 2:
-        emit("error", {"message": "房間已滿（最多 2 人）"})
+    max_h = GAME_MAX_HUMANS.get(game_type, 2)
+    if len(room["players"]) >= max_h:
+        emit("error", {"message": f"房間已滿（最多 {max_h} 人）"})
         return
 
     room["players"].append({"id": sid, "name": name, "isHost": False})
@@ -297,12 +363,11 @@ def on_join(data):
     emit("room:joined", {"code": code, "gameType": room["gameType"]})
     broadcast_room(room)
 
-    if len(room["players"]) == 2:
-        socketio.emit(
-            "room:both-connected",
-            {"message": "兩位玩家都已連線！可以開始遊戲了"},
-            room=code,
-        )
+    if len(room["players"]) == max_h:
+        msg = "兩位玩家都已連線！可以開始遊戲了"
+        if game_type == "mahjong":
+            msg = "兩位玩家都已連線！開局後會由 2 位電腦補齊四人麻將"
+        socketio.emit("room:both-connected", {"message": msg}, room=code)
 
 
 def start_poker_round(room, code):
@@ -350,6 +415,76 @@ def start_bulls_round(room, code):
     }, room=code)
 
 
+def _emit_mahjong_to_humans(room, code, event, extra=None):
+    for p in room["players"]:
+        view = mj.build_client_view(room["round"], p["id"])
+        if extra:
+            view.update(extra)
+        socketio.emit(event, view, to=p["id"])
+
+
+def _declare_mahjong_win(room, code, seat, zimo):
+    rnd = room["round"]
+    tai, tai_items = mj.calc_tai(seat, rnd["dealer"], zimo)
+    rnd["winner"] = seat["id"]
+    rnd["zimo"] = zimo
+    rnd["winInfo"] = {
+        "winnerId": seat["id"],
+        "winnerName": seat["name"],
+        "zimo": zimo,
+        "tai": tai,
+        "taiItems": tai_items,
+        "hand": [mj.TILE_LABELS[t] for t in seat["hand"]],
+        "flowers": [mj.TILE_LABELS[f] for f in seat["flowers"]],
+        "message": f"{seat['name']} {'自摸' if zimo else '胡牌'}！共 {tai} 台",
+    }
+    room["gameState"] = "round-end"
+    _emit_mahjong_to_humans(room, code, "game:mahjong-win")
+
+
+def _advance_mahjong(room, code, initial=False):
+    """推進麻將回合直到需要真人操作或結束。"""
+    rnd = room["round"]
+    event = "game:mahjong-new-round" if initial else "game:mahjong-update"
+    while rnd["winner"] is None:
+        seat = rnd["seats"][rnd["currentSeat"]]
+        if rnd["phase"] == "draw":
+            result = mj.apply_draw(rnd)
+            if rnd["winner"] == "draw":
+                rnd["winInfo"] = {"message": "流局，牌牆用完了"}
+                room["gameState"] = "round-end"
+                _emit_mahjong_to_humans(room, code, "game:mahjong-win")
+                return
+            if result == "win":
+                if seat["isAI"]:
+                    _declare_mahjong_win(room, code, seat, zimo=True)
+                    return
+                _emit_mahjong_to_humans(room, code, event)
+                return
+            if seat["isAI"]:
+                tile = mj.ai_choose_discard(seat)
+                if tile:
+                    mj.apply_discard(rnd, seat["seatIndex"], tile)
+                continue
+            _emit_mahjong_to_humans(room, code, event)
+            return
+        if rnd["phase"] == "discard":
+            if seat["isAI"]:
+                tile = mj.ai_choose_discard(seat)
+                if not tile:
+                    return
+                mj.apply_discard(rnd, seat["seatIndex"], tile)
+                continue
+            _emit_mahjong_to_humans(room, code, event)
+            return
+
+
+def start_mahjong_round(room, code):
+    room["gameState"] = "playing"
+    room["round"] = mj.start_round(room["players"])
+    _advance_mahjong(room, code, initial=True)
+
+
 @socketio.on("game:start-round")
 def on_start_round():
     from flask import request
@@ -362,14 +497,17 @@ def on_start_round():
     if not player or not player.get("isHost"):
         emit("error", {"message": "只有房主可以開始"})
         return
-    if len(room["players"]) < 2:
-        emit("error", {"message": "需要兩位玩家連線才能開始"})
+    max_h = GAME_MAX_HUMANS.get(room["gameType"], 2)
+    if len(room["players"]) < max_h:
+        emit("error", {"message": f"需要 {max_h} 位玩家連線才能開始"})
         return
 
     if room["gameType"] == "poker":
         start_poker_round(room, code)
     elif room["gameType"] == "sudoku":
         start_sudoku_round(room, code)
+    elif room["gameType"] == "mahjong":
+        start_mahjong_round(room, code)
     else:
         start_bulls_round(room, code)
     broadcast_room(room)
@@ -402,6 +540,7 @@ def on_poker_submit(data):
     if correct:
         rnd["winner"] = sid
         winner = next((p for p in room["players"] if p["id"] == sid), None)
+        emit("game:poker-result", {"correct": True, "message": "🎉 你答對了！"})
         socketio.emit("game:poker-won", {
             "winnerId": sid,
             "winnerName": winner["name"] if winner else "玩家",
@@ -419,6 +558,22 @@ def on_poker_submit(data):
     broadcast_room(room)
 
 
+@socketio.on("game:sudoku-check")
+def on_sudoku_check(data):
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room or room["gameType"] != "sudoku" or room["gameState"] != "playing":
+        return
+    rnd = room.get("round")
+    if not rnd or rnd.get("winner"):
+        return
+    grid = data.get("grid")
+    result = analyze_sudoku_grid(grid, rnd["solution"], rnd["puzzle"])
+    emit("game:sudoku-check-result", result)
+
+
 @socketio.on("game:sudoku-submit")
 def on_sudoku_submit(data):
     from flask import request
@@ -432,19 +587,30 @@ def on_sudoku_submit(data):
         return
 
     grid = data.get("grid")
-    ok, message = validate_sudoku_grid(grid, rnd["solution"], rnd["puzzle"])
-    rnd["submissions"][sid] = {"correct": ok, "message": message}
+    result = analyze_sudoku_grid(grid, rnd["solution"], rnd["puzzle"])
+    rnd["submissions"][sid] = {"correct": result["ok"], "message": result["message"]}
 
-    if ok:
+    if result["ok"]:
         rnd["winner"] = sid
         winner = next((p for p in room["players"] if p["id"] == sid), None)
+        emit("game:sudoku-result", {
+            "correct": True,
+            "message": "🎉 你答對了！",
+            "wrongCells": [],
+            "emptyCells": [],
+        })
         socketio.emit("game:sudoku-won", {
             "winnerId": sid,
             "winnerName": winner["name"] if winner else "玩家",
         }, room=code)
         room["gameState"] = "round-end"
     else:
-        emit("game:sudoku-result", {"correct": False, "message": message})
+        emit("game:sudoku-result", {
+            "correct": False,
+            "message": result["message"],
+            "wrongCells": result["wrongCells"],
+            "emptyCells": result["emptyCells"],
+        })
     broadcast_room(room)
 
 
@@ -539,6 +705,7 @@ def on_bulls_guess(data):
 
     if a == 4:
         rnd["winner"] = sid
+        emit("game:bulls-result", {"correct": True, "message": "🎉 你答對了！4A0B！"})
         socketio.emit("game:bulls-won", {
             "winnerId": sid,
             "winnerName": player["name"] if player else "玩家",
@@ -565,6 +732,57 @@ def on_bulls_guess(data):
             "currentTurnId": next_player["id"],
             "currentTurnName": next_player["name"],
         }, room=code)
+    broadcast_room(room)
+
+
+@socketio.on("game:mahjong-discard")
+def on_mahjong_discard(data):
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room or room["gameType"] != "mahjong" or room["gameState"] != "playing":
+        return
+    rnd = room.get("round")
+    if not rnd or rnd.get("winner"):
+        return
+    seat = mj.seat_by_id(rnd, sid)
+    if not seat or seat["isAI"]:
+        return
+    if rnd["currentSeat"] != seat["seatIndex"] or rnd["phase"] != "discard":
+        emit("game:mahjong-error", {"message": "還沒輪到你打牌"})
+        return
+    tile_id = (data.get("tileId") or "").strip()
+    if tile_id not in seat["hand"]:
+        emit("game:mahjong-error", {"message": "請選擇要打出的牌"})
+        return
+    mj.apply_discard(rnd, seat["seatIndex"], tile_id)
+    _advance_mahjong(room, code)
+    broadcast_room(room)
+
+
+@socketio.on("game:mahjong-hu")
+def on_mahjong_hu():
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room or room["gameType"] != "mahjong" or room["gameState"] != "playing":
+        return
+    rnd = room.get("round")
+    if not rnd or rnd.get("winner"):
+        return
+    seat = mj.seat_by_id(rnd, sid)
+    if not seat or seat["isAI"]:
+        return
+    if rnd["currentSeat"] != seat["seatIndex"] or rnd["phase"] != "discard":
+        emit("game:mahjong-error", {"message": "現在不能胡牌"})
+        return
+    if not mj.can_win(seat["hand"]):
+        emit("game:mahjong-error", {"message": "牌型還不能胡"})
+        return
+    _declare_mahjong_win(room, code, seat, zimo=True)
+    emit("game:mahjong-self-win", {"message": "🎉 你胡牌了！"})
     broadcast_room(room)
 
 

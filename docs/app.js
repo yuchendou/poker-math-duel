@@ -9,6 +9,7 @@ const GAME_INFO = {
   poker: { label: '撲克數學', icon: '🃏', startText: '翻牌出題' },
   sudoku: { label: '雙人數獨', icon: '🔢', startText: '開始數獨' },
   bulls: { label: '幾A幾B', icon: '🎯', startText: '開始出題對戰' },
+  mahjong: { label: '台灣麻將', icon: '🀄', startText: '開始四人麻將' },
   blockblast: { label: 'Block Blast 解題', icon: '🧩', solo: true },
 };
 
@@ -22,6 +23,7 @@ const panels = {
   pokerGame: $('pokerGame'),
   sudokuGame: $('sudokuGame'),
   bullsGame: $('bullsGame'),
+  mahjongGame: $('mahjongGame'),
   blockblastGame: $('blockblastGame'),
 };
 
@@ -35,6 +37,8 @@ let sudokuGrid = null;
 let sudokuSelected = null;
 let bullsCurrentTurnId = null;
 let bullsSecretSubmitted = false;
+let sudokuWrongCells = new Set();
+window.mahjongIsHost = false;
 
 function showPanel(panel) {
   Object.values(panels).forEach((p) => p.classList.add('hidden'));
@@ -52,6 +56,21 @@ function updateServerStatus(text, ok) {
   el.textContent = text;
   el.classList.remove('hidden', 'ok', 'error');
   el.classList.add(ok ? 'ok' : 'error');
+}
+
+function showFeedback(elementId, message, type = 'error') {
+  const fb = $(elementId);
+  fb.classList.remove('hidden', 'success', 'error');
+  fb.classList.add(type);
+  fb.textContent = message;
+}
+
+function sudokuCellKey(r, c) {
+  return `${r},${c}`;
+}
+
+function setSudokuWrongCells(cells) {
+  sudokuWrongCells = new Set((cells || []).map(([r, c]) => sudokuCellKey(r, c)));
 }
 
 function showError(msg) {
@@ -126,6 +145,7 @@ function initSocket() {
   });
 
   bindSocketEvents();
+  if (window.bindMahjong) window.bindMahjong(socket, panels, showPanel);
 }
 
 function bindSocketEvents() {
@@ -140,6 +160,9 @@ function bindSocketEvents() {
   socket.on('room:update', (state) => {
     roomState = state;
     if (state.gameType === 'bulls' && ['setup', 'playing', 'round-end'].includes(state.gameState)) {
+      return;
+    }
+    if (state.gameType === 'mahjong' && ['playing', 'round-end'].includes(state.gameState)) {
       return;
     }
     if (state.gameState === 'waiting' || state.gameState === 'round-end') {
@@ -172,14 +195,14 @@ function bindSocketEvents() {
     $('expression').focus();
   });
 
-  socket.on('game:poker-result', ({ message }) => {
-    const fb = $('pokerFeedback');
-    fb.classList.remove('hidden', 'success', 'error');
-    fb.classList.add('error');
-    fb.textContent = message;
+  socket.on('game:poker-result', ({ correct, message }) => {
+    showFeedback('pokerFeedback', message, correct ? 'success' : 'error');
   });
 
-  socket.on('game:poker-won', ({ winnerName, expression, result, target }) => {
+  socket.on('game:poker-won', ({ winnerId, winnerName, expression, result, target }) => {
+    if (winnerId === myId) {
+      showFeedback('pokerFeedback', '🎉 你答對了！', 'success');
+    }
     $('expression').disabled = true;
     $('btnPokerSubmit').disabled = true;
     const el = $('pokerRoundResult');
@@ -193,22 +216,41 @@ function bindSocketEvents() {
 
   socket.on('game:sudoku-new-round', ({ puzzle }) => {
     showPanel(panels.sudokuGame);
+    setSudokuWrongCells([]);
     initSudoku(puzzle);
     $('sudokuFeedback').classList.add('hidden');
     $('sudokuRoundResult').classList.add('hidden');
     $('btnSudokuNext').classList.add('hidden');
     $('btnSudokuSubmit').disabled = false;
+    $('btnSudokuCheck').disabled = false;
   });
 
-  socket.on('game:sudoku-result', ({ message }) => {
-    const fb = $('sudokuFeedback');
-    fb.classList.remove('hidden', 'success', 'error');
-    fb.classList.add('error');
-    fb.textContent = message;
+  socket.on('game:sudoku-check-result', ({ ok, message, wrongCells, emptyCells }) => {
+    setSudokuWrongCells(wrongCells);
+    renderSudokuBoard();
+    if (ok) {
+      showFeedback('sudokuFeedback', message, 'success');
+    } else if (wrongCells?.length) {
+      showFeedback('sudokuFeedback', message, 'error');
+    } else if (emptyCells?.length) {
+      showFeedback('sudokuFeedback', message, 'error');
+    } else {
+      showFeedback('sudokuFeedback', message, 'error');
+    }
   });
 
-  socket.on('game:sudoku-won', ({ winnerName }) => {
+  socket.on('game:sudoku-result', ({ correct, message, wrongCells }) => {
+    if (wrongCells?.length) setSudokuWrongCells(wrongCells);
+    renderSudokuBoard();
+    showFeedback('sudokuFeedback', message, correct ? 'success' : 'error');
+  });
+
+  socket.on('game:sudoku-won', ({ winnerId, winnerName }) => {
+    if (winnerId === myId) {
+      showFeedback('sudokuFeedback', '🎉 你答對了！', 'success');
+    }
     $('btnSudokuSubmit').disabled = true;
+    $('btnSudokuCheck').disabled = true;
     const el = $('sudokuRoundResult');
     el.classList.remove('hidden');
     el.innerHTML = `<p class="winner">🎉 ${winnerName} 先完成了！</p>`;
@@ -265,15 +307,22 @@ function bindSocketEvents() {
     if (currentTurnId === myId) $('bullsGuess').focus();
   });
 
-  socket.on('game:bulls-result', ({ message }) => {
-    showBullsFeedback(message, 'error');
+  socket.on('game:bulls-result', ({ correct, message }) => {
+    if (correct) {
+      showBullsFeedback(message, 'success');
+    } else {
+      showBullsFeedback(message, 'error');
+    }
     if (!bullsSecretSubmitted && !$('bullsSetup').classList.contains('hidden')) {
       $('btnBullsSecret').disabled = false;
       $('btnBullsSecret').textContent = '出題';
     }
   });
 
-  socket.on('game:bulls-won', ({ winnerName, guess, secret, opponentName, revealedSecrets, attempts, history }) => {
+  socket.on('game:bulls-won', ({ winnerId, winnerName, guess, secret, opponentName, revealedSecrets, attempts, history }) => {
+    if (winnerId === myId) {
+      showBullsFeedback('🎉 你答對了！4A0B！', 'success');
+    }
     renderBullsHistory(history || []);
     updateBullsTurnUI(null, null, true);
     const el = $('bullsRoundResult');
@@ -334,6 +383,7 @@ $('btnCopy').addEventListener('click', () => {
 
 function updateWaitingUI(state) {
   isHost = state.players.find((p) => p.id === myId)?.isHost ?? false;
+  window.mahjongIsHost = isHost;
   $('displayCode').textContent = state.code;
   $('displayGameLabel').textContent = state.gameLabel || GAME_INFO[state.gameType]?.label || '';
 
@@ -413,6 +463,9 @@ function renderSudokuBoard() {
       if (sudokuSelected && sudokuSelected[0] === r && sudokuSelected[1] === c) {
         cell.classList.add('selected');
       }
+      if (sudokuWrongCells.has(sudokuCellKey(r, c))) {
+        cell.classList.add('wrong');
+      }
       if ((r + 1) % 3 === 0 && r < 8) cell.classList.add('border-bottom');
       if ((c + 1) % 3 === 0 && c < 8) cell.classList.add('border-right');
       cell.textContent = val === 0 ? '' : val;
@@ -451,6 +504,7 @@ function setSudokuCell(num) {
   const [r, c] = sudokuSelected;
   if (sudokuPuzzle[r][c] !== 0) return;
   sudokuGrid[r][c] = num;
+  sudokuWrongCells.delete(sudokuCellKey(r, c));
   renderSudokuBoard();
 }
 
@@ -547,6 +601,11 @@ $('btnBullsNext').addEventListener('click', () => {
   socket.emit('game:start-round');
 });
 
+$('btnMahjongNext')?.addEventListener('click', () => {
+  if (!requireSocket()) return;
+  socket.emit('game:start-round');
+});
+
 $('btnPokerSubmit').addEventListener('click', submitPoker);
 $('expression').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') submitPoker();
@@ -558,6 +617,11 @@ function submitPoker() {
   if (!expression) return;
   socket.emit('game:poker-submit', { expression });
 }
+
+$('btnSudokuCheck').addEventListener('click', () => {
+  if (!requireSocket()) return;
+  socket.emit('game:sudoku-check', { grid: sudokuGrid });
+});
 
 $('btnSudokuSubmit').addEventListener('click', () => {
   if (!requireSocket()) return;

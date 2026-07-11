@@ -44,6 +44,11 @@
           <span class="game-card-name">幾A幾B</span>
           <span class="game-card-desc">各自出題，輪流猜對手的數字</span>
         </button>
+        <button class="game-card" data-game="mahjong">
+          <span class="game-card-icon">🀄</span>
+          <span class="game-card-name">台灣麻將</span>
+          <span class="game-card-desc">2 人連線 + 2 電腦，有花牌算台</span>
+        </button>
         <button class="game-card" data-game="blockblast">
           <span class="game-card-icon">🧩</span>
           <span class="game-card-name">Block Blast 解題</span>
@@ -130,11 +135,14 @@
 
     <!-- 雙人數獨 -->
     <section id="sudokuGame" class="panel hidden">
-      <p class="sudoku-hint">同一題數獨，先填完正確的人贏！</p>
+      <p class="sudoku-hint">同一題數獨，先填完正確的人贏！可按「檢查哪裡錯」標出錯誤格子。</p>
       <div id="sudokuBoard" class="sudoku-board"></div>
       <div id="sudokuNumpad" class="sudoku-numpad"></div>
       <p id="sudokuFeedback" class="feedback hidden"></p>
-      <button id="btnSudokuSubmit" class="btn btn-primary">我填完了！</button>
+      <div class="sudoku-actions">
+        <button id="btnSudokuCheck" type="button" class="btn btn-secondary">檢查哪裡錯</button>
+        <button id="btnSudokuSubmit" type="button" class="btn btn-primary">我填完了！</button>
+      </div>
       <div id="sudokuRoundResult" class="round-result hidden"></div>
       <button id="btnSudokuNext" class="btn btn-secondary hidden">下一題（房主）</button>
     </section>
@@ -168,6 +176,25 @@
 
       <div id="bullsRoundResult" class="round-result hidden"></div>
       <button id="btnBullsNext" class="btn btn-secondary hidden">下一題（房主）</button>
+    </section>
+
+    <!-- 台灣麻將 -->
+    <section id="mahjongGame" class="panel hidden">
+      <div class="mj-info-bar">
+        <span>莊家：<strong id="mjDealerWind">東</strong></span>
+        <span>牌牆剩餘：<strong id="mjWallCount">0</strong> 張</span>
+      </div>
+      <p id="mjTurnStatus" class="mj-turn-status">等待開始...</p>
+      <div id="mjTable" class="mj-table"></div>
+      <p id="mjLastDraw" class="mj-last-draw hidden"></p>
+      <div id="mjHand" class="mj-hand"></div>
+      <p id="mjFeedback" class="feedback hidden"></p>
+      <div class="mj-actions">
+        <button id="btnMahjongHu" type="button" class="btn btn-primary hidden">胡牌（自摸）</button>
+        <button id="btnMahjongDiscard" type="button" class="btn btn-secondary">打出選取的牌</button>
+      </div>
+      <div id="mjRoundResult" class="round-result hidden"></div>
+      <button id="btnMahjongNext" type="button" class="btn btn-secondary hidden">下一局（房主）</button>
     </section>
 
     <!-- Block Blast 解題 -->
@@ -238,6 +265,7 @@
   <script src="./config.js"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
   <script src="./blockblast.js"></script>
-  <script src="./app.js?v=3"></script>
+  <script src="./mahjong.js"></script>
+  <script src="./app.js?v=4"></script>
 </body>
 </html>

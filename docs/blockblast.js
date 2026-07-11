@@ -356,7 +356,7 @@
         let msg = fullCount
           ? `找到 ${fullCount} 種能全空的放法（顯示最好的 ${top.length} 種）`
           : `顯示清最多格的 ${top.length} 種放法`;
-        $('bbStatus').textContent = `✅ ${msg}`;
+        $('bbStatus').textContent = `🎉 你答對了！${msg}`;
         $('bbStatus').className = 'bb-status ok';
       } else {
         $('bbStatus').textContent = '❌ 找不到解法';
