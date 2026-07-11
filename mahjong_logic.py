@@ -117,7 +117,8 @@ def can_win(hand, melds, extra=None):
 
 
 def is_menqing(melds):
-    return not any(m["type"] in ("chi", "pon", "minkong") for m in melds)
+    """門清：無吃、碰、明槓、加槓（暗槓仍算門清）。"""
+    return not any(m["type"] in ("chi", "pon", "minkong", "jiagang") for m in melds)
 
 
 def draw_from_wall(rnd, seat):
@@ -192,6 +193,7 @@ def start_round(human_players, dealer_streak=0):
         "winner": None,
         "winInfo": None,
         "discardCount": 0,
+        "roundWind": 0,
     }
 
 
@@ -660,7 +662,10 @@ def ai_take_self_action(rnd, seat_idx):
     return None
 
 
-# ── 台數計算 ──────────────────────────────────────────
+# ── 台數計算（台灣 16 張，牌型只取最高組合）──────────────────
+
+ALL_WIN_TILES = [f"{s}{i}" for s in SUITS_NUM for i in range(1, 10)] + list(HONORS)
+
 
 def _hand_stats(hand, melds, extra=None):
     tiles = all_tiles_for_win(hand, melds, extra)
@@ -668,18 +673,13 @@ def _hand_stats(hand, melds, extra=None):
     honors = [t for t in tiles if t.startswith("Z")]
     nums = [t for t in tiles if t[0] in SUITS_NUM]
     only_honors = len(nums) == 0 and len(honors) > 0
-    only_nums = len(honors) == 0 and len(nums) > 0
-    one_suit_honor = len(suits) == 1 and honors
+    one_suit_honor = len(suits) == 1 and bool(honors)
     one_suit = len(suits) == 1 and not honors
-    dragons = sum(1 for t in tiles if t in DRAGONS)
-    winds = sum(1 for t in tiles if t in WINDS)
     return {
         "tiles": tiles,
         "only_honors": only_honors,
         "one_suit": one_suit,
         "one_suit_honor": one_suit_honor,
-        "dragons": dragons,
-        "winds": winds,
     }
 
 
@@ -720,110 +720,229 @@ def _is_all_triplets(hand, melds, extra=None):
 
 
 def _count_concealed_pungs(hand, melds):
+    """手牌暗刻 + 暗槓（不含碰、明槓）。"""
     n = sum(1 for m in melds if m["type"] == "ankong")
     counts = Counter(hand)
-    for t, c in list(counts.items()):
+    for t, c in counts.items():
         if c >= 3:
             n += 1
-    return min(n, 5)
+    return n
 
 
-def _dragon_wind_tai(hand, melds, extra):
+def _dragon_wind_patterns(hand, melds, extra):
     tiles = all_tiles_for_win(hand, melds, extra)
     c = Counter(tiles)
     d_trips = sum(1 for t in DRAGONS if c[t] >= 3)
     w_trips = sum(1 for t in WINDS if c[t] >= 3)
     d_pairs = sum(1 for t in DRAGONS if c[t] == 2)
     w_pairs = sum(1 for t in WINDS if c[t] == 2)
-    items = []
-    tai = 0
+    patterns = []
     if d_trips == 3:
-        tai += 8
-        items.append("大三元 8 台")
+        patterns.append((8, "大三元"))
     elif d_trips == 2 and d_pairs == 1:
-        tai += 4
-        items.append("小三元 4 台")
+        patterns.append((4, "小三元"))
     if w_trips == 4:
-        tai += 16
-        items.append("大四喜 16 台")
+        patterns.append((16, "大四喜"))
     elif w_trips == 3 and w_pairs == 1:
-        tai += 8
-        items.append("小四喜 8 台")
-    return tai, items
+        patterns.append((8, "小四喜"))
+    return patterns
+
+
+def _waiting_tiles(hand, melds):
+    waits = []
+    for t in ALL_WIN_TILES:
+        if can_win(hand, melds, t):
+            waits.append(t)
+    return waits
+
+
+def _wait_shape_name(hand, melds, extra):
+    """邊張、中洞、單吊（各 1 台）。"""
+    if not extra:
+        return None
+    h = list(hand)
+    if extra in h:
+        h.remove(extra)
+    waits = _waiting_tiles(h, melds)
+    if len(waits) != 1:
+        return None
+    w = waits[0]
+    if w[0] not in SUITS_NUM:
+        return None
+    if h.count(w) == 1:
+        return "單吊"
+    suit, n = w[0], int(w[1])
+    if n == 3 and f"{suit}1" in h and f"{suit}2" in h:
+        return "邊張"
+    if n == 7 and f"{suit}8" in h and f"{suit}9" in h:
+        return "邊張"
+    if 2 <= n <= 8 and f"{suit}{n - 1}" in h and f"{suit}{n + 1}" in h:
+        return "中洞"
+    return None
+
+
+def _is_quanqiuren(hand, melds, is_ron):
+    if not is_ron or not melds:
+        return False
+    if len(hand) != 1:
+        return False
+    return all(m["type"] in ("chi", "pon", "minkong", "jiagong") for m in melds)
+
+
+def _is_banqiuren(hand, melds, is_zimo):
+    """半求人：全副明牌、自摸最後一張。"""
+    if not is_zimo or len(melds) < 4:
+        return False
+    if any(m["type"] in ("ankong",) for m in melds):
+        return False
+    if not all(m["type"] in ("chi", "pon", "minkong", "jiagang") for m in melds):
+        return False
+    return len(hand) == 2
+
+
+def _is_pinghu(hand, melds, extra, flowers, is_zimo):
+    """平胡 2 台：全順子、無字牌、無花、非自摸、非單吊。"""
+    if is_zimo or flowers:
+        return False
+    if any(m["type"] in ("pon", "minkong", "ankong", "jiagong") for m in melds):
+        return False
+    tiles = all_tiles_for_win(hand, melds, extra)
+    if any(t.startswith("Z") for t in tiles):
+        return False
+    if not can_win(hand, melds, extra) or _is_all_triplets(hand, melds, extra):
+        return False
+    h = list(hand)
+    if extra and extra in h:
+        h.remove(extra)
+    elif extra and extra not in h:
+        pass
+    else:
+        return False
+    if _wait_shape_name(hand, melds, extra) == "單吊":
+        return False
+    return len(_waiting_tiles(h, melds)) >= 1
+
+
+def _wind_pung_patterns(hand, melds, extra, seat_idx, round_wind):
+    tiles = all_tiles_for_win(hand, melds, extra)
+    c = Counter(tiles)
+    patterns = []
+    round_tile = f"Z{round_wind + 1}"
+    seat_tile = f"Z{seat_idx + 1}"
+    if c[round_tile] >= 3:
+        patterns.append((1, f"圈風{WIND_NAMES[round_wind]}"))
+    if c[seat_tile] >= 3:
+        patterns.append((1, f"門風{WIND_NAMES[seat_idx]}"))
+    return patterns
+
+
+def _pick_best_pattern(patterns):
+    if not patterns:
+        return None
+    return max(patterns, key=lambda x: x[0])
 
 
 def calc_tai(seat, rnd, win_type="zimo", extra_tile=None):
+    """
+    台灣麻將 16 張計台。
+    牌型類（清一色、碰碰胡、三元喜等）只取最高一項；胡牌狀況類可疊加。
+    """
     items = []
     tai = 0
+    flags = rnd.get("winFlags") or {}
+    is_zimo = win_type == "zimo"
+    is_ron = win_type in ("ron", "qianggang")
+    menqing = is_menqing(seat["melds"])
+    hand, melds = seat["hand"], seat["melds"]
+    dealer = rnd["dealer"]
+    dc = rnd.get("discardCount", 0)
+    round_wind = rnd.get("roundWind", 0)
 
     def add(n, name):
         nonlocal tai
         tai += n
         items.append(f"{name} {n} 台")
 
-    add(1, "底台")
-    add(1, "平胡")
+    # ── 牌型組合（互斥，只取最高）──
+    patterns = []
 
-    if seat["seatIndex"] == rnd["dealer"]:
+    if len(seat["flowers"]) >= 8:
+        patterns.append((8, "八仙過海"))
+
+    if is_zimo and seat["seatIndex"] == dealer and dc == 0:
+        patterns.append((16, "天胡"))
+    if is_ron and seat["seatIndex"] != dealer and dc == 1 and rnd.get("discardSeat") == dealer:
+        patterns.append((16, "地胡"))
+
+    patterns.extend(_dragon_wind_patterns(hand, melds, extra_tile))
+
+    stats = _hand_stats(hand, melds, extra_tile)
+    if stats["only_honors"]:
+        patterns.append((16, "字一色"))
+    elif stats["one_suit"]:
+        patterns.append((8, "清一色"))
+    elif stats["one_suit_honor"]:
+        patterns.append((4, "湊一色"))
+
+    if _is_all_triplets(hand, melds, extra_tile):
+        patterns.append((4, "碰碰胡"))
+
+    concealed = _count_concealed_pungs(hand, melds)
+    if concealed >= 5:
+        patterns.append((16, "五暗刻"))
+    elif concealed >= 4:
+        patterns.append((8, "四暗刻"))
+    elif concealed >= 3:
+        patterns.append((2, "三暗刻"))
+
+    if _is_quanqiuren(hand, melds, is_ron):
+        patterns.append((2, "全求人"))
+    elif _is_banqiuren(hand, melds, is_zimo):
+        patterns.append((2, "半求人"))
+
+    if _is_pinghu(hand, melds, extra_tile, seat["flowers"], is_zimo):
+        patterns.append((2, "平胡"))
+
+    best = _pick_best_pattern(patterns)
+    if best:
+        add(best[0], best[1])
+
+    # ── 胡牌狀況（可疊加）──
+    if seat["seatIndex"] == dealer:
         add(1, "莊家")
-    streak = rnd.get("dealerStreak", 0)
-    if streak > 0 and seat["seatIndex"] == rnd["dealer"]:
-        add(streak, f"連莊×{streak}")
 
-    if win_type == "zimo":
-        add(1, "自摸")
-    if is_menqing(seat["melds"]):
+    streak = rnd.get("dealerStreak", 0)
+    if streak > 0 and seat["seatIndex"] == dealer:
+        lai = 2 * streak
+        add(lai, f"連{streak}拉{streak}")
+
+    if is_zimo:
+        if menqing:
+            add(3, "門清自摸")
+        else:
+            add(1, "自摸")
+    elif menqing:
         add(1, "門清")
-    if not seat["flowers"]:
-        add(1, "不求")
+
+    for wt, wname in _wind_pung_patterns(hand, melds, extra_tile, seat["seatIndex"], round_wind):
+        add(wt, wname)
 
     for f in seat["flowers"]:
-        add(1, f"花牌{TILE_LABELS[f]}")
-        if f in SEAT_FLOWERS[seat["seatIndex"]]:
-            add(1, f"正花{TILE_LABELS[f]}")
-    if len(seat["flowers"]) >= 8:
-        add(8, "八仙過海")
+        if f in SEAT_FLOWERS.get(seat["seatIndex"], ()):
+            add(1, f"花台{TILE_LABELS[f]}")
 
-    for m in seat["melds"]:
-        if m["type"] == "minkong":
-            add(1, f"明槓{TILE_LABELS[m['tile']]}")
-        elif m["type"] == "ankong":
-            add(2, f"暗槓{TILE_LABELS[m['tile']]}")
-        elif m["type"] == "jiagong":
-            add(1, f"加槓{TILE_LABELS[m['tile']]}")
+    wait_name = _wait_shape_name(hand, melds, extra_tile)
+    if wait_name:
+        add(1, wait_name)
 
-    flags = rnd.get("winFlags") or {}
-    if flags.get("gangShang"):
+    if flags.get("haiDi") and is_zimo:
+        add(1, "海底撈月")
+    if flags.get("heDi") and is_ron:
+        add(1, "河底撈魚")
+    if flags.get("gangShang") and is_zimo:
         add(1, "槓上開花")
     if flags.get("qiangGang"):
         add(1, "搶槓")
-    if flags.get("haiDi"):
-        add(1, "海底撈月")
-    if flags.get("heDi"):
-        add(1, "河底撈魚")
-
-    stats = _hand_stats(seat["hand"], seat["melds"], extra_tile)
-    if stats["only_honors"]:
-        add(16, "字一色")
-    elif stats["one_suit"]:
-        add(8, "清一色")
-    elif stats["one_suit_honor"]:
-        add(4, "混一色")
-
-    if _is_all_triplets(seat["hand"], seat["melds"], extra_tile):
-        add(4, "碰碰胡")
-
-    dt, di = _dragon_wind_tai(seat["hand"], seat["melds"], extra_tile)
-    tai += dt
-    items.extend(di)
-
-    concealed = _count_concealed_pungs(seat["hand"], seat["melds"])
-    if concealed >= 5:
-        add(8, "五暗刻")
-    elif concealed == 4:
-        add(5, "四暗刻")
-    elif concealed == 3:
-        add(2, "三暗刻")
 
     return tai, items
 
