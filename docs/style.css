@@ -88,6 +88,17 @@ body {
   color: #ffb4b4;
 }
 
+.page-error {
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  text-align: center;
+  background: rgba(255, 107, 107, 0.12);
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  color: #ffb4b4;
+}
+
 .panel {
   background: var(--surface);
   border: 1px solid var(--surface2);
@@ -111,6 +122,8 @@ body {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 1rem;
+  position: relative;
+  z-index: 2;
 }
 
 .game-card {

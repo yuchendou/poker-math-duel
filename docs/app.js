@@ -41,8 +41,19 @@ let sudokuWrongCells = new Set();
 window.mahjongIsHost = false;
 
 function showPanel(panel) {
-  Object.values(panels).forEach((p) => p.classList.add('hidden'));
+  if (!panel) return;
+  Object.values(panels).forEach((p) => {
+    if (p) p.classList.add('hidden');
+  });
   panel.classList.remove('hidden');
+}
+
+function showPageError(msg) {
+  const el = $('pageError');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 5000);
 }
 
 function showSetupBanner() {
@@ -74,7 +85,15 @@ function setSudokuWrongCells(cells) {
 }
 
 function showError(msg) {
+  if (panels.gameSelect && !panels.gameSelect.classList.contains('hidden')) {
+    showPageError(msg);
+    return;
+  }
   const el = $('lobbyError');
+  if (!el) {
+    showPageError(msg);
+    return;
+  }
   el.textContent = msg;
   el.classList.remove('hidden');
   setTimeout(() => el.classList.add('hidden'), 4000);
@@ -130,11 +149,134 @@ function bindGameCards() {
   });
 }
 
-$('btnBackToSelect').addEventListener('click', () => {
-  selectedGame = null;
-  $('mainSubtitle').textContent = '選一個遊戲，跟朋友連線對戰！';
-  showPanel(panels.gameSelect);
-});
+function bindClick(id, handler) {
+  const el = $(id);
+  if (el) el.addEventListener('click', handler);
+}
+
+function refreshPanels() {
+  panels.gameSelect = $('gameSelect');
+  panels.lobby = $('lobby');
+  panels.waiting = $('waiting');
+  panels.pokerGame = $('pokerGame');
+  panels.sudokuGame = $('sudokuGame');
+  panels.bullsGame = $('bullsGame');
+  panels.mahjongGame = $('mahjongGame');
+  panels.blockblastGame = $('blockblastGame');
+}
+
+function bindAllUi() {
+  bindClick('btnBackToSelect', () => {
+    selectedGame = null;
+    $('mainSubtitle').textContent = '選一個遊戲，跟朋友連線對戰！';
+    document.querySelectorAll('.game-card').forEach((card) => card.classList.remove('selected'));
+    showPanel(panels.gameSelect);
+  });
+
+  bindClick('btnCreate', () => {
+    if (!requireSocket() || !selectedGame) return;
+    socket.emit('room:create', {
+      name: $('playerName').value.trim() || '玩家',
+      gameType: selectedGame,
+    });
+  });
+
+  bindClick('btnJoin', () => {
+    if (!requireSocket() || !selectedGame) return;
+    const code = $('roomCode').value.trim().toUpperCase();
+    if (!code) {
+      showError('請輸入房間代碼');
+      return;
+    }
+    socket.emit('room:join', {
+      name: $('playerName').value.trim() || '玩家',
+      code,
+      gameType: selectedGame,
+    });
+  });
+
+  const roomCode = $('roomCode');
+  if (roomCode) {
+    roomCode.addEventListener('input', (e) => {
+      e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    });
+  }
+
+  bindClick('btnCopy', () => {
+    navigator.clipboard.writeText($('displayCode').textContent).then(() => {
+      const btn = $('btnCopy');
+      if (!btn) return;
+      btn.textContent = '已複製！';
+      setTimeout(() => { btn.textContent = '複製代碼'; }, 2000);
+    });
+  });
+
+  bindClick('btnStart', () => {
+    if (!requireSocket()) return;
+    socket.emit('game:start-round');
+  });
+
+  bindClick('btnPokerNext', () => {
+    if (!requireSocket()) return;
+    socket.emit('game:start-round');
+  });
+
+  bindClick('btnSudokuNext', () => {
+    if (!requireSocket()) return;
+    socket.emit('game:start-round');
+  });
+
+  bindClick('btnBullsNext', () => {
+    if (!requireSocket()) return;
+    socket.emit('game:start-round');
+  });
+
+  bindClick('btnMahjongNext', () => {
+    if (!requireSocket()) return;
+    socket.emit('game:start-round');
+  });
+
+  bindClick('btnPokerSubmit', submitPoker);
+  const expression = $('expression');
+  if (expression) {
+    expression.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitPoker();
+    });
+  }
+
+  bindClick('btnSudokuCheck', () => {
+    if (!requireSocket()) return;
+    socket.emit('game:sudoku-check', { grid: sudokuGrid });
+  });
+
+  bindClick('btnSudokuSubmit', () => {
+    if (!requireSocket()) return;
+    socket.emit('game:sudoku-submit', { grid: sudokuGrid });
+  });
+
+  bindClick('btnBullsSubmit', submitBulls);
+  bindClick('btnBullsSecret', submitBullsSecret);
+
+  const bullsSecret = $('bullsSecret');
+  if (bullsSecret) {
+    bullsSecret.addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+    });
+    bullsSecret.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitBullsSecret();
+    });
+  }
+
+  const bullsGuess = $('bullsGuess');
+  if (bullsGuess) {
+    bullsGuess.addEventListener('input', (e) => {
+      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+    });
+    bullsGuess.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') submitBulls();
+    });
+  }
+}
 
 function initSocket() {
   if (!serverUrl) {
@@ -366,39 +508,6 @@ function bindSocketEvents() {
   });
 }
 
-$('btnCreate').addEventListener('click', () => {
-  if (!requireSocket() || !selectedGame) return;
-  socket.emit('room:create', {
-    name: $('playerName').value.trim() || '玩家',
-    gameType: selectedGame,
-  });
-});
-
-$('btnJoin').addEventListener('click', () => {
-  if (!requireSocket() || !selectedGame) return;
-  const code = $('roomCode').value.trim().toUpperCase();
-  if (!code) {
-    showError('請輸入房間代碼');
-    return;
-  }
-  socket.emit('room:join', {
-    name: $('playerName').value.trim() || '玩家',
-    code,
-    gameType: selectedGame,
-  });
-});
-
-$('roomCode').addEventListener('input', (e) => {
-  e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-});
-
-$('btnCopy').addEventListener('click', () => {
-  navigator.clipboard.writeText($('displayCode').textContent).then(() => {
-    $('btnCopy').textContent = '已複製！';
-    setTimeout(() => { $('btnCopy').textContent = '複製代碼'; }, 2000);
-  });
-});
-
 function updateWaitingUI(state) {
   isHost = state.players.find((p) => p.id === myId)?.isHost ?? false;
   window.mahjongIsHost = isHost;
@@ -599,67 +708,12 @@ function updateBullsTurnUI(currentTurnId, currentTurnName, gameOver = false) {
   }
 }
 
-$('btnStart').addEventListener('click', () => {
-  if (!requireSocket()) return;
-  socket.emit('game:start-round');
-});
-
-$('btnPokerNext').addEventListener('click', () => {
-  if (!requireSocket()) return;
-  socket.emit('game:start-round');
-});
-
-$('btnSudokuNext').addEventListener('click', () => {
-  if (!requireSocket()) return;
-  socket.emit('game:start-round');
-});
-
-$('btnBullsNext').addEventListener('click', () => {
-  if (!requireSocket()) return;
-  socket.emit('game:start-round');
-});
-
-$('btnMahjongNext')?.addEventListener('click', () => {
-  if (!requireSocket()) return;
-  socket.emit('game:start-round');
-});
-
-$('btnPokerSubmit').addEventListener('click', submitPoker);
-$('expression').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') submitPoker();
-});
-
 function submitPoker() {
   if (!requireSocket()) return;
   const expression = $('expression').value.trim();
   if (!expression) return;
   socket.emit('game:poker-submit', { expression });
 }
-
-$('btnSudokuCheck').addEventListener('click', () => {
-  if (!requireSocket()) return;
-  socket.emit('game:sudoku-check', { grid: sudokuGrid });
-});
-
-$('btnSudokuSubmit').addEventListener('click', () => {
-  if (!requireSocket()) return;
-  socket.emit('game:sudoku-submit', { grid: sudokuGrid });
-});
-
-$('btnBullsSubmit').addEventListener('click', submitBulls);
-$('btnBullsSecret').addEventListener('click', submitBullsSecret);
-$('bullsSecret').addEventListener('input', (e) => {
-  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
-});
-$('bullsSecret').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') submitBullsSecret();
-});
-$('bullsGuess').addEventListener('input', (e) => {
-  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
-});
-$('bullsGuess').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') submitBulls();
-});
 
 function submitBullsSecret() {
   if (!requireSocket() || bullsSecretSubmitted) return;
@@ -687,10 +741,21 @@ function submitBulls() {
 }
 
 function bootApp() {
+  refreshPanels();
   bindGameCards();
+  bindAllUi();
   if (!window.__APP_BOOTED__) {
     window.__APP_BOOTED__ = true;
-    initSocket();
+    try {
+      if (typeof io === 'undefined') {
+        showPageError('連線元件載入失敗，請重新整理頁面');
+        return;
+      }
+      initSocket();
+    } catch (err) {
+      console.error(err);
+      showPageError('遊戲啟動失敗，請強制重新整理（Cmd+Shift+R）');
+    }
   }
 }
 
