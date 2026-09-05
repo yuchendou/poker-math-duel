@@ -20,28 +20,30 @@ function boardLayout(board) {
   };
 }
 
-/** CSS 3D 立體建築 */
+/** 等距立體建築（三個面：正面、側面、頂面） */
 function building3D(space, level) {
   if (!level || !space.price) return '';
   const color = MP_COLORS[space.color] || '#64748b';
-  if (level === 1) {
-    return `<div class="b3d b3d-house" style="--bc:${color}">
-      <div class="b3d-roof"></div><div class="b3d-body"></div></div>`;
-  }
-  if (level === 2) {
-    return `<div class="b3d b3d-tower" style="--bc:${color}">
-      <div class="b3d-t1"></div><div class="b3d-t2"></div><div class="b3d-t3"></div></div>`;
-  }
-  return `<div class="b3d b3d-landmark" style="--bc:${color}">
-    <div class="b3d-spire"></div><div class="b3d-lbase"></div>
-    <span class="b3d-label">${(space.landmark || '').slice(0, 4)}</span></div>`;
+  const tag = level === 3 ? `<span class="iso-tag">${(space.landmark || space.name || '').slice(0, 3)}</span>` : '';
+  const spire = level === 3 ? '<div class="iso-spire"></div>' : '';
+  const roof = level === 1 ? '<div class="iso-roof"></div>' : '';
+  const floors = level === 2 ? 2 : level === 3 ? 3 : 1;
+  const blocks = Array.from({ length: floors }, (_, i) =>
+    `<div class="iso-block" style="--lift:${i * 10}px"><div class="iso-top"></div><div class="iso-left"></div><div class="iso-right"></div></div>`,
+  ).join('');
+  return `<div class="iso-build lv${level}" style="--bc:${color};--bcd:${color}99">${roof}${spire}<div class="iso-scene">${blocks}</div>${tag}</div>`;
 }
 
 function centerBuilding3D(space, level) {
   const color = MP_COLORS[space?.color] || '#fbbf24';
-  if (level === 1) return `<div class="cb3d cb3d-house anim-pop" style="--bc:${color}"><div class="b3d-roof"></div><div class="b3d-body lg"></div></div>`;
-  if (level === 2) return `<div class="cb3d cb3d-tower anim-pop" style="--bc:${color}"><div class="b3d-t1 lg"></div><div class="b3d-t2 lg"></div><div class="b3d-t3 lg"></div></div>`;
-  return `<div class="cb3d cb3d-landmark anim-pop" style="--bc:${color}"><div class="b3d-spire lg"></div><div class="b3d-lbase lg"></div><p class="cb3d-name">${space?.landmark || '地標'}</p></div>`;
+  const tag = level === 3 ? `<p class="cb3d-name">${space?.landmark || '地標'}</p>` : '';
+  const spire = level === 3 ? '<div class="iso-spire lg"></div>' : '';
+  const roof = level === 1 ? '<div class="iso-roof lg"></div>' : '';
+  const floors = level === 2 ? 2 : level === 3 ? 3 : 1;
+  const blocks = Array.from({ length: floors }, (_, i) =>
+    `<div class="iso-block lg" style="--lift:${i * 22}px"><div class="iso-top"></div><div class="iso-left"></div><div class="iso-right"></div></div>`,
+  ).join('');
+  return `<div class="cb3d iso-build lv${level} anim-pop" style="--bc:${color};--bcd:${color}99">${roof}${spire}<div class="iso-scene lg">${blocks}</div>${tag}</div>`;
 }
 
 function renderCell(space, players, propStates) {
@@ -122,14 +124,18 @@ async function animateMove(state, anim) {
   const idx = anim.playerIndex;
   const player = state.players[idx];
   mpAnimating = true;
+  player.position = anim.from ?? anim.path[0];
+  renderBoard(state, true);
   for (const pos of anim.path) {
     player.position = pos;
     renderBoard(state, true);
     highlightCell(pos);
-    await sleep(180);
+    await sleep(220);
   }
   player.position = anim.to;
   renderBoard(state, true);
+  highlightCell(anim.to);
+  await sleep(300);
   mpAnimating = false;
 }
 
@@ -202,21 +208,26 @@ async function handleUpdate(view) {
   const state = view.state;
   const anim = state.centerAnim;
 
-  if (anim?.type === 'dice' && anim.values) {
-    showDiceCenter(anim.values.map(() => '?'));
-    await sleep(500);
-    showDiceResult(anim.values);
-  }
   if (anim?.type === 'move' && anim.path?.length && !mpAnimating) {
+    renderBoard(state, true);
     await animateMove(state, anim);
+  } else {
+    renderBoard(state);
   }
-  if (anim?.type === 'build') showBuildCenter(state, anim);
-  if (anim?.type === 'chance') showChanceCenter(state.lastChanceCard || anim.text || '機會卡');
-  if (anim?.type === 'rent') showRentCenter(anim.amount);
-
-  renderBoard(state);
   renderPlayers(state, view.myIndex);
   renderActions(view);
+
+  if (anim?.type === 'dice' && anim.values) {
+    showDiceCenter(anim.values.map(() => '?'));
+    await sleep(650);
+    showDiceResult(anim.values);
+  } else if (anim?.type === 'build') {
+    showBuildCenter(state, anim);
+  } else if (anim?.type === 'chance') {
+    showChanceCenter(state.lastChanceCard || anim.text || '機會卡');
+  } else if (anim?.type === 'rent') {
+    showRentCenter(anim.amount);
+  }
 }
 
 window.bindMonopoly = function (socket, panels, showPanel) {

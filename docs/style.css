@@ -2301,60 +2301,106 @@ button.mj-tile:not(.disabled):hover .mj-tile-body {
 /* 通用 pop 動畫 */
 .anim-pop { animation: mpPop 0.55s cubic-bezier(.34,1.56,.64,1); }
 
-/* ── 棋盤格 3D 建築 ── */
-.b3d { --bc: #64748b; position: relative; margin: 2px 0; transform-style: preserve-3d; perspective: 120px; }
-.b3d-house { width: 22px; height: 20px; }
-.b3d-house .b3d-roof {
-  width: 0; height: 0;
-  border-left: 11px solid transparent; border-right: 11px solid transparent;
-  border-bottom: 8px solid color-mix(in srgb, var(--bc) 80%, #000);
-  margin: 0 auto;
+/* ── 等距立體建築（三個面） ── */
+.iso-build {
+  --bc: #64748b;
+  --bcd: #475569;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 26px;
+  margin: 1px 0 2px;
 }
-.b3d-house .b3d-body {
-  width: 18px; height: 10px; margin: 0 auto;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--bc) 70%, #fff), var(--bc));
+.iso-scene {
+  position: relative;
+  width: 26px;
+  height: 28px;
+  transform-style: preserve-3d;
+  transform: rotateX(58deg) rotateZ(-45deg);
+}
+.iso-block {
+  position: absolute;
+  bottom: 0;
+  left: 3px;
+  width: 18px;
+  height: 14px;
+  transform-style: preserve-3d;
+  transform: translateY(calc(var(--lift, 0px) * -1));
+}
+.iso-top, .iso-left, .iso-right {
+  position: absolute;
+  box-sizing: border-box;
+}
+.iso-top {
+  width: 18px; height: 18px;
+  background: color-mix(in srgb, var(--bc) 55%, #fff);
+  border: 1px solid color-mix(in srgb, var(--bc) 70%, #000);
+  transform: rotateX(90deg) translateZ(7px);
+}
+.iso-left {
+  width: 18px; height: 14px;
+  background: color-mix(in srgb, var(--bc) 80%, #000);
+  border: 1px solid #00000055;
+  transform: translateZ(9px);
+}
+.iso-right {
+  width: 18px; height: 14px;
+  background: var(--bc);
   border: 1px solid color-mix(in srgb, var(--bc) 60%, #000);
-  box-shadow: 2px 2px 0 rgba(0,0,0,.35);
+  transform: rotateY(90deg) translateZ(9px);
 }
-.b3d-tower { width: 20px; height: 24px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
-.b3d-tower .b3d-t1, .b3d-tower .b3d-t2, .b3d-tower .b3d-t3 {
-  background: linear-gradient(90deg, color-mix(in srgb, var(--bc) 65%, #fff), var(--bc));
-  border: 1px solid color-mix(in srgb, var(--bc) 50%, #000);
-  box-shadow: 1px 1px 0 rgba(0,0,0,.3);
+.iso-roof {
+  position: absolute;
+  top: -2px;
+  width: 0; height: 0;
+  border-left: 10px solid transparent;
+  border-right: 10px solid transparent;
+  border-bottom: 8px solid color-mix(in srgb, var(--bc) 65%, #000);
+  z-index: 2;
 }
-.b3d-tower .b3d-t1 { width: 16px; height: 7px; }
-.b3d-tower .b3d-t2 { width: 13px; height: 7px; }
-.b3d-tower .b3d-t3 { width: 10px; height: 7px; }
-.b3d-landmark { width: 24px; height: 28px; display: flex; flex-direction: column; align-items: center; }
-.b3d-landmark .b3d-spire {
-  width: 4px; height: 10px;
-  background: linear-gradient(180deg, #fbbf24, var(--bc));
-  border-radius: 2px 2px 0 0;
+.iso-spire {
+  position: absolute;
+  top: -10px;
+  width: 4px; height: 12px;
+  background: linear-gradient(180deg, #fde047, var(--bc));
+  border-radius: 2px;
+  z-index: 3;
+  box-shadow: 0 0 6px rgba(251,191,36,.6);
 }
-.b3d-landmark .b3d-lbase {
-  width: 20px; height: 14px;
-  background: linear-gradient(145deg, color-mix(in srgb, var(--bc) 60%, #fff), var(--bc));
-  border: 1px solid color-mix(in srgb, var(--bc) 40%, #000);
-  clip-path: polygon(10% 0, 90% 0, 100% 100%, 0 100%);
-  box-shadow: 2px 3px 0 rgba(0,0,0,.4);
+.iso-tag {
+  font-size: 0.42rem;
+  color: #fbbf24;
+  font-weight: 800;
+  line-height: 1;
+  margin-top: 1px;
+  text-shadow: 0 1px 2px #000;
 }
-.b3d-label { font-size: 0.45rem; color: #fbbf24; font-weight: 800; margin-top: 1px; line-height: 1; }
+.lv2 .iso-scene { height: 36px; }
+.lv3 .iso-scene { height: 44px; }
+.lv3 .iso-spire { height: 16px; top: -14px; width: 5px; }
 
-/* ── 中央大號 3D 建築（蓋房動畫） ── */
-.cb3d { --bc: #64748b; transform-style: preserve-3d; filter: drop-shadow(0 12px 24px rgba(0,0,0,.5)); }
-.cb3d-house { width: 80px; }
-.cb3d-house .b3d-roof {
-  border-left-width: 40px; border-right-width: 40px; border-bottom-width: 28px;
-  border-bottom-color: color-mix(in srgb, var(--bc) 75%, #000);
+/* 中央大號建築 */
+.cb3d.iso-build { min-height: 120px; }
+.cb3d .iso-scene.lg {
+  width: 90px;
+  height: 100px;
+  transform: rotateX(58deg) rotateZ(-45deg) scale(1.8);
 }
-.cb3d-house .b3d-body.lg { width: 64px; height: 40px; }
-.cb3d-tower { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.cb3d-tower .b3d-t1.lg { width: 56px; height: 22px; }
-.cb3d-tower .b3d-t2.lg { width: 44px; height: 22px; }
-.cb3d-tower .b3d-t3.lg { width: 32px; height: 22px; }
-.cb3d-landmark .b3d-spire.lg { width: 10px; height: 36px; }
-.cb3d-landmark .b3d-lbase.lg { width: 72px; height: 48px; }
-.cb3d-name { font-size: 1.1rem; font-weight: 800; color: #fbbf24; margin-top: 0.5rem; text-shadow: 0 2px 8px rgba(0,0,0,.5); }
+.cb3d .iso-block.lg { width: 36px; height: 28px; left: 8px; }
+.cb3d .iso-top { width: 36px; height: 36px; transform: rotateX(90deg) translateZ(14px); }
+.cb3d .iso-left, .cb3d .iso-right { width: 36px; height: 28px; }
+.cb3d .iso-left { transform: translateZ(18px); }
+.cb3d .iso-right { transform: rotateY(90deg) translateZ(18px); }
+.cb3d .iso-roof.lg {
+  border-left-width: 22px; border-right-width: 22px; border-bottom-width: 16px;
+  top: 8px;
+}
+.cb3d .iso-spire.lg { width: 8px; height: 32px; top: -8px; }
+.cb3d-name { font-size: 1.15rem; font-weight: 800; color: #fbbf24; margin-top: 0.75rem; text-shadow: 0 2px 8px rgba(0,0,0,.5); }
+
+.mp-cell.property .iso-build { filter: drop-shadow(2px 4px 3px rgba(0,0,0,.45)); }
+.mp-cell-body { overflow: visible; }
 
 /* 機會卡中央動畫 */
 .mp-chance-card {
