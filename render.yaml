@@ -1,9 +1,11 @@
 services:
   - type: web
-    name: monopoly-game
+    name: poker-math-duel
     runtime: node
+    plan: free
     buildCommand: npm install && npm run build
     startCommand: npm start
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production

@@ -78,6 +78,10 @@ function applyAction(
 }
 
 const app = express()
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, game: 'monopoly-online' })
+})
+
 const httpServer = createServer(app)
 
 const io = new Server(httpServer, {

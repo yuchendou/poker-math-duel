@@ -2,6 +2,8 @@
 
 台灣主題的大富翁桌遊，支援 **2 名玩家在不同裝置上線連線對戰**。
 
+**線上網址（Render）：** https://poker-math-duel.onrender.com
+
 ## 功能
 
 - 建立／加入房間（6 位房間代碼）
@@ -23,26 +25,34 @@ npm run dev
 
 ## 部署到 Render（跟朋友一起玩）
 
-### 1. 推到 GitHub
+### 1. 推到 GitHub（repo：`yuchendou/poker-math-duel`）
+
+在本機終端機（需已登入 GitHub）執行：
 
 ```bash
-# 在 GitHub 建立 repo，例如 monopoly-game
-git remote add github git@github.com:yuchendou/monopoly-game.git
-git push -u github main
+chmod +x deploy-to-github.sh
+./deploy-to-github.sh
 ```
 
-### 2. Render 設定
+或手動：
 
-1. 登入 [render.com](https://render.com)
-2. **New +** → **Web Service**（不是 Static Site）
-3. 連接 GitHub repo
-4. 設定：
-   - **Runtime**：Node
-   - **Build Command**：`npm install && npm run build`
-   - **Start Command**：`npm start`
-5. 部署完成後得到 `https://你的服務名.onrender.com`
+```bash
+git remote add github git@github.com:yuchendou/poker-math-duel.git
+git push github main --force
+```
 
-> repo 根目錄已有 `render.yaml`，也可用 **New Blueprint** 一鍵部署。
+### 2. Render 設定（你已有 `poker-math-duel` 服務）
+
+推送後 Render 通常會自動重新部署。若仍是舊版（Python／麻將），到 Dashboard 手動改：
+
+| 項目 | 值 |
+|------|-----|
+| Runtime | **Node** |
+| Build Command | `npm install && npm run build` |
+| Start Command | `npm start` |
+| Health Check | `/health` |
+
+然後點 **Manual Deploy → Deploy latest commit**。
 
 ### 3. 怎麼玩
 
