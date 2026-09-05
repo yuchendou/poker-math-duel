@@ -8,6 +8,10 @@ from typing import Any, Callable
 BOARD_SIZE = 40
 START_BONUS = 3000
 START_MONEY = 25000
+BANK_FEE = 500
+GOTO_JAIL_FINE = 1500
+BANK_BUYBACK_RATIO = 0.5
+BANK_POSITION = 30
 TAKEOVER_MULT = 1.5
 COLOR_SET_BONUS = 1.5
 
@@ -42,7 +46,7 @@ _RAW_BOARD: list[dict[str, Any]] = [
     {"type": "property", "id": 7, "name": "五股", "price": 2000, "rent": 550, "color": "lightblue", "landmark": "觀音山"},
     {"type": "property", "id": 8, "name": "泰山", "price": 2200, "rent": 600, "color": "pink", "landmark": "明志科大"},
     {"type": "property", "id": 9, "name": "林口", "price": 2400, "rent": 650, "color": "pink", "landmark": "三井Outlet"},
-    {"type": "jail", "id": 10, "name": "探監"},
+    {"type": "bank", "id": 10, "name": "銀行", "bankFee": BANK_FEE},
     {"type": "property", "id": 11, "name": "板橋", "price": 2800, "rent": 800, "color": "orange", "landmark": "大遠百"},
     {"type": "chance", "id": 12, "name": "機會"},
     {"type": "property", "id": 13, "name": "中和", "price": 3000, "rent": 850, "color": "orange", "landmark": "環球"},
@@ -74,18 +78,15 @@ _RAW_BOARD: list[dict[str, Any]] = [
     {"type": "property", "id": 39, "name": "象山", "price": 7200, "rent": 2050, "color": "darkblue", "landmark": "象山步道"},
 ]
 
-# 逆時針路徑：右下出發 → 底排向左 → 左側向上 → 頂排向右 → 右側向下
+# 逆時針：右下出發 → 底排向左 → 左側(內湖側)向上 → 頂排(南港→信義…)向右 → 右側向下
 _CCW_PATH = [
     0, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30,
-    29, 28, 27, 26, 25, 24, 23, 22, 21, 20,
-    19, 18, 17, 16, 15, 14, 13, 12, 11, 10,
+    19, 18, 17, 16, 15, 14, 13, 12, 11,
+    20, 21, 22, 23, 24, 25, 27, 26, 28, 29, 10,
     9, 8, 7, 6, 5, 4, 3, 2, 1,
 ]
 _BY_ID = {s["id"]: s for s in _RAW_BOARD}
 BOARD: list[dict[str, Any]] = [copy.deepcopy(_BY_ID[i]) for i in _CCW_PATH]
-
-# 探監角（pos 30）；入獄格（pos 10）踩到後送來此處
-JAIL_POSITION = 30
 
 COLOR_MAP = {
     "brown": "#92400e", "lightblue": "#38bdf8", "pink": "#ec4899", "orange": "#f97316",
@@ -182,6 +183,29 @@ def _luxury_tax_pay_amount(state: dict, player: dict) -> int:
     return _tax_discount(state, player, 1200)
 
 
+def calc_bank_liquidation(state: dict, player_id: int) -> int:
+    total = 0
+    for k, ps in list(state.get("propertyStates", {}).items()):
+        if ps.get("ownerId") != player_id:
+            continue
+        space = next((s for s in state["board"] if str(s["id"]) == k), None)
+        if not space or space.get("type") != "property":
+            continue
+        base = space["price"]
+        level = ps.get("level", 0)
+        total += int(base * BANK_BUYBACK_RATIO)
+        if level > 0:
+            total += int(investment_value(base, level) * BANK_BUYBACK_RATIO)
+    return total
+
+
+def _sell_all_to_bank(state: dict, player_id: int) -> int:
+    total = calc_bank_liquidation(state, player_id)
+    _remove_props(state, player_id)
+    state["players"][player_id]["money"] += total
+    return total
+
+
 def _set_anim(state: dict, anim: dict | None) -> None:
     state["centerAnim"] = anim
 
@@ -194,7 +218,7 @@ def create_initial_state(names: list[str], sids: list[str], avatars: list[str] |
             "id": i, "sid": sids[i] if i < len(sids) else None,
             "name": (name or f"玩家 {i + 1}").strip()[:12] or f"玩家 {i + 1}",
             "avatar": av, "money": START_MONEY, "position": 0,
-            "inJail": False, "jailTurns": 0, "bankrupt": False,
+            "bankrupt": False,
         })
     return {
         "phase": "rolling", "players": players, "currentPlayerIndex": 0,
@@ -232,6 +256,11 @@ def _end_turn(state: dict, message: str | None = None) -> dict:
                   "diceRolling": False, "pendingAction": None, "centerAnim": None})
     state["message"] = message or f"{p['avatar']} {p['name']} 的回合"
     return _check_winner(state)
+
+
+def _pending_kind(state: dict) -> str | None:
+    act = state.get("pendingAction")
+    return act.get("kind") if act else None
 
 
 def _set_pending(state: dict, action: dict) -> dict:
@@ -302,17 +331,24 @@ def _handle_landing(state: dict) -> dict:
             "message": "💎 奢侈稅！老實繳清或轉盤一搏？",
             "payAmount": pay_amt,
         })
-    if st == "jail":
-        return _end_turn(state, "路過探監")
+    if st == "bank":
+        fee = space.get("bankFee", BANK_FEE)
+        return _set_pending(state, {
+            "kind": "bank_fee",
+            "message": f"🏦 銀行業務手續費 ${fee}",
+            "amount": fee,
+        })
     if st == "parking":
         if cur.get("avatar") == "🍮":
             cur["money"] += 500
             return _end_turn(state, "休息區恢復 $500（豆花加成）")
         return _end_turn(state, "在休息區")
     if st == "gotojail":
-        cur.update({"position": JAIL_POSITION, "inJail": True, "jailTurns": 0})
-        _set_anim(state, {"type": "jail", "playerIndex": state["currentPlayerIndex"]})
-        return _end_turn(state, "入獄！")
+        return _set_pending(state, {
+            "kind": "gotojail_fine",
+            "message": f"⚠️ 入獄罰款 ${GOTO_JAIL_FINE}（付清後送往銀行）",
+            "amount": GOTO_JAIL_FINE,
+        })
 
     if st != "property":
         return _end_turn(state)
@@ -360,33 +396,17 @@ def _handle_landing(state: dict) -> dict:
 
 def roll_dice(state: dict) -> dict:
     state = _clone(state)
-    if state["phase"] not in ("rolling", "jail"):
+    if state["phase"] not in ("rolling", "moving"):
         return state
     cur = state["players"][state["currentPlayerIndex"]]
     d1, d2 = random.randint(1, 6), random.randint(1, 6)
     total = d1 + d2
     state["dice"] = [d1, d2]
     state["diceRolling"] = True
-    _set_anim(state, {"type": "dice", "values": [d1, d2]})
-
-    if cur.get("inJail"):
-        if d1 == d2:
-            cur.update({"inJail": False, "jailTurns": 0})
-            state = _move_with_anim(state, total)
-            state["diceRolling"] = False
-            return _handle_landing(state)
-        cur["jailTurns"] = cur.get("jailTurns", 0) + 1
-        if cur["jailTurns"] >= 3:
-            cur.update({"inJail": False, "jailTurns": 0, "money": max(0, cur["money"] - 800)})
-            state = _move_with_anim(state, total)
-            state["diceRolling"] = False
-            return _handle_landing(state)
-        state["diceRolling"] = False
-        return _end_turn(state, f"監獄中（{cur['jailTurns']}/3）")
-
     state = _move_with_anim(state, total)
     state["diceRolling"] = False
     state["message"] = f"擲出 {d1}+{d2}={total}"
+    state["centerAnim"] = {"type": "dice", "values": [d1, d2]}
     return _handle_landing(state)
 
 
@@ -429,6 +449,11 @@ def takeover_property(state: dict) -> dict:
     elif act.get("kind") != "takeover":
         return state
     cur = state["players"][state["currentPlayerIndex"]]
+    if cur["money"] < act["amount"]:
+        rescue = _offer_bank_rescue(state, act["amount"], act.get("sellerId"), "搶購", copy.deepcopy(act))
+        if rescue:
+            return state
+        return _end_turn(state, "資金不足")
     if not _apply_build(state, act["propertyId"], act["amount"], act["nextLevel"], act.get("sellerId")):
         return _end_turn(state, "資金不足")
     space = next(s for s in state["board"] if s["id"] == act["propertyId"])
@@ -441,6 +466,11 @@ def _do_build(state: dict, kind: str) -> dict:
     if act.get("kind") != kind:
         return state
     cur = state["players"][state["currentPlayerIndex"]]
+    if cur["money"] < act["amount"]:
+        rescue = _offer_bank_rescue(state, act["amount"], act.get("sellerId"), "建設", copy.deepcopy(act))
+        if rescue:
+            return state
+        return _end_turn(state, "資金不足")
     if not _apply_build(state, act["propertyId"], act["amount"], act["nextLevel"], act.get("sellerId")):
         return _end_turn(state, "資金不足")
     space = next(s for s in state["board"] if s["id"] == act["propertyId"])
@@ -451,17 +481,44 @@ def skip_action(state: dict) -> dict:
     return _end_turn(_clone(state), "放棄")
 
 
+def _do_bankrupt(state: dict, amount: int, recipient: int | None) -> dict:
+    cur = state["players"][state["currentPlayerIndex"]]
+    rem = cur["money"]
+    cur.update({"bankrupt": True, "money": 0})
+    if recipient is not None:
+        state["players"][recipient]["money"] += rem
+        _remove_props(state, cur["id"], recipient)
+    else:
+        _remove_props(state, cur["id"])
+    return _check_winner(_end_turn(state, f"💸 {cur['name']} 破產！"))
+
+
+def _offer_bank_rescue(state: dict, amount: int, recipient: int | None, reason: str, resume: dict | None = None) -> dict | None:
+    cur = state["players"][state["currentPlayerIndex"]]
+    if cur["money"] >= amount:
+        return None
+    liq = calc_bank_liquidation(state, cur["id"])
+    if cur["money"] + liq < amount:
+        return None
+    pending: dict[str, Any] = {
+        "kind": "bank_rescue",
+        "message": f"{reason} 資金不足！可將所有地產售予銀行得 ${liq}",
+        "amount": amount,
+        "liquidation": liq,
+        "recipient": recipient,
+    }
+    if resume:
+        pending["resumeAction"] = resume
+    return _set_pending(state, pending)
+
+
 def _pay(state: dict, amount: int, recipient: int | None = None) -> dict:
     cur = state["players"][state["currentPlayerIndex"]]
     if cur["money"] < amount:
-        rem = cur["money"]
-        cur.update({"bankrupt": True, "money": 0})
-        if recipient is not None:
-            state["players"][recipient]["money"] += rem
-            _remove_props(state, cur["id"], recipient)
-        else:
-            _remove_props(state, cur["id"])
-        return _check_winner(_end_turn(state, f"💸 {cur['name']} 破產！"))
+        rescue = _offer_bank_rescue(state, amount, recipient, "付款")
+        if rescue:
+            return rescue
+        return _do_bankrupt(state, amount, recipient)
     cur["money"] -= amount
     if recipient is not None:
         state["players"][recipient]["money"] += amount
@@ -475,10 +532,66 @@ def pay_rent(state: dict) -> dict:
     if act.get("kind") != "rent":
         return state
     ps = get_prop_state(state, act["propertyId"])
-    state = _pay(state, act["amount"], ps["ownerId"] if ps else None)
+    owner = ps["ownerId"] if ps else None
+    state = _pay(state, act["amount"], owner)
+    if _pending_kind(state) == "bank_rescue":
+        return state
     if state["players"][state["currentPlayerIndex"]].get("bankrupt"):
         return state
     return _end_turn(state, f"支付過路費 ${act['amount']}")
+
+
+def pay_bank_fee(state: dict) -> dict:
+    state = _clone(state)
+    act = state.get("pendingAction") or {}
+    kind = act.get("kind")
+    if kind not in ("bank_fee", "gotojail_fine"):
+        return state
+    state = _pay(state, act["amount"])
+    if _pending_kind(state) == "bank_rescue":
+        return state
+    cur = state["players"][state["currentPlayerIndex"]]
+    if cur.get("bankrupt"):
+        return state
+    if kind == "gotojail_fine":
+        cur["position"] = BANK_POSITION
+        _set_anim(state, {"type": "bank", "text": "前往銀行"})
+        return _handle_landing(state)
+    return _end_turn(state, f"銀行手續費 ${act['amount']}")
+
+
+def sell_to_bank(state: dict) -> dict:
+    state = _clone(state)
+    act = state.get("pendingAction") or {}
+    if act.get("kind") != "bank_rescue":
+        return state
+    cur = state["players"][state["currentPlayerIndex"]]
+    got = _sell_all_to_bank(state, cur["id"])
+    state["pendingAction"] = None
+    amount = act["amount"]
+    recipient = act.get("recipient")
+    state = _pay(state, amount, recipient)
+    if _pending_kind(state) == "bank_rescue":
+        return state
+    if cur.get("bankrupt"):
+        return state
+    _set_anim(state, {"type": "bank", "text": f"售地套現 +${got}", "amount": got})
+    msg = f"售地套現 ${got}，完成付款 ${amount}"
+    resume = act.get("resumeAction")
+    if resume and resume.get("kind") in ("buy", "upgrade", "takeover"):
+        state["pendingAction"] = resume
+        if resume["kind"] == "takeover":
+            return takeover_property(state)
+        return _do_build(state, resume["kind"])
+    return _end_turn(state, msg)
+
+
+def declare_bankrupt(state: dict) -> dict:
+    state = _clone(state)
+    act = state.get("pendingAction") or {}
+    if act.get("kind") != "bank_rescue":
+        return state
+    return _do_bankrupt(state, act["amount"], act.get("recipient"))
 
 
 def pay_tax(state: dict) -> dict:
@@ -487,6 +600,8 @@ def pay_tax(state: dict) -> dict:
     if act.get("kind") != "tax":
         return state
     state = _pay(state, act["amount"])
+    if _pending_kind(state) == "bank_rescue":
+        return state
     if state["players"][state["currentPlayerIndex"]].get("bankrupt"):
         return state
     return _end_turn(state, f"繳稅 ${act['amount']}")
@@ -510,6 +625,8 @@ def choose_tax(state: dict, choice: str) -> dict:
             msg = "📋 全額申報"
         _set_anim(state, {"type": "tax", "text": msg, "amount": amount})
         state = _pay(state, amount)
+        if _pending_kind(state) == "bank_rescue":
+            return state
         if cur.get("bankrupt"):
             return state
         return _end_turn(state, f"{msg} ${amount}")
@@ -537,13 +654,15 @@ def choose_tax(state: dict, choice: str) -> dict:
             if amount > 0:
                 _set_anim(state, {"type": "tax", "text": msg, "amount": amount})
                 state = _pay(state, amount)
-            else:
-                _set_anim(state, {"type": "tax", "text": msg, "amount": 0})
+            if _pending_kind(state) == "bank_rescue":
+                return state
         else:
             amount = act["payAmount"]
             msg = "💳 老實繳清"
             _set_anim(state, {"type": "tax", "text": msg, "amount": amount})
             state = _pay(state, amount)
+            if _pending_kind(state) == "bank_rescue":
+                return state
         if cur.get("bankrupt"):
             return state
         return _end_turn(state, msg if amount == 0 else f"{msg} ${amount}")
@@ -581,7 +700,7 @@ def _chance_cards(state: dict) -> list[tuple[str, Callable[[dict], dict]]]:
         (f"{name} 後退 3 格", lambda s: _move_with_anim(_clone(s), -3)),
         (f"{name} 後退 5 格", lambda s: _move_with_anim(_clone(s), -5)),
         (f"{name} 回到起點", lambda s: _goto_start(_clone(s), idx)),
-        (f"{name} 去探監", lambda s: _send_jail(_clone(s), idx)),
+        (f"{name} 去銀行", lambda s: _send_bank(_clone(s), idx)),
         (f"全員給 {name} $300", lambda s: _collect_all(_clone(s), idx, 300)),
         (f"全員給 {name} $500", lambda s: _collect_all(_clone(s), idx, 500)),
         (f"{name} 免費升級一塊地", lambda s: _free_upgrade(_clone(s), idx)),
@@ -601,9 +720,9 @@ def _goto_start(s: dict, idx: int) -> dict:
     return s
 
 
-def _send_jail(s: dict, idx: int) -> dict:
-    s["players"][idx].update({"position": JAIL_POSITION, "inJail": True, "jailTurns": 0})
-    s["lastChanceCard"] = "被送去探監"
+def _send_bank(s: dict, idx: int) -> dict:
+    s["players"][idx]["position"] = BANK_POSITION
+    s["lastChanceCard"] = "被送去銀行"
     return s
 
 
@@ -683,17 +802,6 @@ def apply_chance_card(state: dict) -> dict:
     if new_pos != old_pos:
         return _handle_landing(state)
     return _end_turn(state, state.get("lastChanceCard", msg))
-
-
-def pay_jail_bail(state: dict) -> dict:
-    state = _clone(state)
-    cur = state["players"][state["currentPlayerIndex"]]
-    if not cur.get("inJail") or cur["money"] < 800:
-        return state
-    cur["money"] -= 800
-    cur.update({"inJail": False, "jailTurns": 0})
-    state["phase"] = "rolling"
-    return state
 
 
 def build_client_view(state: dict, sid: str) -> dict:

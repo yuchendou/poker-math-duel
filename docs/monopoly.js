@@ -70,11 +70,13 @@ function renderCell(cell, players, propStates, hideTokenFor, gridRow, gridCol) {
   const build = isProp && lv ? building3D(space, lv, ownerId, players) : '';
   const price = isProp ? `<span class="mp-price">$${space.price.toLocaleString()}</span>` : '';
   const taxHint = space.type === 'tax' ? `<span class="mp-tax-hint">${space.taxKind === 'luxury' ? '💎' : '🏛️'}</span>` : '';
+  const bankHint = space.type === 'bank' ? `<span class="mp-bank-hint">🏦 $${(space.bankFee || 500).toLocaleString()}</span>` : '';
+  const jailHint = space.type === 'gotojail' ? `<span class="mp-jail-hint">⚠️</span>` : '';
   const tokens = players.filter((p) => !p.bankrupt && p.position === pos && p.id !== hideTokenFor)
     .map((p) => `<span class="mp-token" data-pid="${p.id}" style="--pt:${ownerTint(p.id)}">${p.avatar || '🙂'}</span>`).join('');
   const ownerAttr = ownerId != null ? ` style="--owner:${ownerTint(ownerId)};grid-row:${gridRow};grid-column:${gridCol}"` : ` style="grid-row:${gridRow};grid-column:${gridCol}"`;
   return `<div class="mp-cell ${space.type}${isStart ? ' mp-start' : ''}${ownerId != null ? ` owned-by-p${ownerId}` : ''}" data-space-id="${pos}"${ownerAttr}>
-    ${bar}<div class="mp-cell-body"><span class="mp-name">${space.name}</span>${build}${price}${taxHint}
+    ${bar}<div class="mp-cell-body"><span class="mp-name">${space.name}</span>${build}${price}${taxHint}${bankHint}${jailHint}
     <div class="mp-tokens">${tokens}</div></div></div>`;
 }
 
@@ -225,6 +227,30 @@ function highlightCell(pos) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+function showBankCenter(text, amount) {
+  showCenter(
+    `<div class="mp-bank-flash anim-pop"><span>🏦</span><p>${text}${amount ? `<br>+$${amount.toLocaleString()}` : ''}</p></div>`,
+    '銀行',
+  );
+}
+
+function renderDiceBar(state) {
+  const bar = mp$('mpDiceBar');
+  if (!bar) return;
+  const dice = state.dice;
+  if (!dice || dice.length < 2) {
+    bar.classList.add('hidden');
+    bar.innerHTML = '';
+    return;
+  }
+  const sum = dice[0] + dice[1];
+  bar.classList.remove('hidden');
+  bar.innerHTML = `
+    <span class="mp-dice-bar-label">本回合骰子</span>
+    <div class="mp-dice-bar-dice">${dice.map((d) => `<span class="mp-dice-bar-die">${d}</span>`).join('')}</div>
+    <span class="mp-dice-bar-sum">= ${sum} 點</span>`;
+}
+
 function renderPlayers(state, myIndex) {
   mp$('mpPlayers').innerHTML = state.players.map((p, i) => {
     const bonus = (window.FOOD_AVATARS || []).find((f) => f.emoji === p.avatar)?.bonus || '';
@@ -250,9 +276,8 @@ function renderActions(view) {
   if (!isMyTurn && state.phase !== 'gameover') html = `<p class="mp-wait">${cur.avatar} 等待 ${cur.name}…</p>`;
   else if (state.phase === 'gameover' && state.winner) html = `<div class="mp-win">🏆 ${state.winner.avatar} ${state.winner.name} 獲勝！</div>`;
   else if (isMyTurn) {
-    const canRoll = (state.phase === 'rolling' || state.phase === 'jail') && !cur.bankrupt;
+    const canRoll = state.phase === 'rolling' && !cur.bankrupt;
     if (canRoll && !act) html += `<button type="button" class="btn btn-primary" id="mpBtnRoll">🎲 擲骰子</button>`;
-    if (cur.inJail && state.phase === 'rolling') html += `<button type="button" class="btn btn-secondary" id="mpBtnJail" ${cur.money < 800 ? 'disabled' : ''}>付 $800 保釋</button>`;
     if (act) {
       html += `<p class="mp-pending">${act.message}</p>`;
       if (act.rentPreview) html += `<p class="mp-rent-hint">升級後過路費：$${act.rentPreview.toLocaleString()}</p>`;
@@ -266,6 +291,10 @@ function renderActions(view) {
       } else if (act.kind === 'rent') {
         html += `<button class="btn btn-primary" id="mpBtnPay">💸 付過路費 $${amt.toLocaleString()}</button>`;
         if (act.takeoverAmount) html += `<button class="btn btn-secondary" id="mpBtnTake" ${cur.money < act.takeoverAmount ? 'disabled' : ''}>⚔️ 搶購 $${act.takeoverAmount.toLocaleString()}</button>`;
+      } else if (act.kind === 'bank_fee' || act.kind === 'gotojail_fine') {
+        html += `<button class="btn btn-primary" id="mpBtnBankFee">🏦 繳費 $${amt.toLocaleString()}</button>`;
+      } else if (act.kind === 'bank_rescue') {
+        html += `<div class="mp-btn-row"><button class="btn btn-primary" id="mpBtnSellBank">🏦 售地套現 $${act.liquidation.toLocaleString()}</button><button class="btn btn-danger" id="mpBtnBankrupt">💸 宣告破產</button></div>`;
       } else if (act.kind === 'tax_land') {
         html += `<div class="mp-btn-row"><button class="btn btn-primary" id="mpBtnTaxFull">📋 全額申報 $${amt.toLocaleString()}</button><button class="btn btn-secondary" id="mpBtnTaxGamble">🎲 抽稽查（半價或加碼）</button></div>`;
       } else if (act.kind === 'tax_luxury') {
@@ -282,7 +311,9 @@ function renderActions(view) {
     showDiceCenter(['?', '?']);
     setTimeout(() => mpSocket.emit('game:monopoly-roll'), 400);
   });
-  mp$('mpBtnJail')?.addEventListener('click', () => mpSocket.emit('game:monopoly-jail-bail'));
+  mp$('mpBtnBankFee')?.addEventListener('click', () => mpSocket.emit('game:monopoly-bank-fee'));
+  mp$('mpBtnSellBank')?.addEventListener('click', () => mpSocket.emit('game:monopoly-sell-bank'));
+  mp$('mpBtnBankrupt')?.addEventListener('click', () => mpSocket.emit('game:monopoly-bankrupt'));
   mp$('mpBtnBuild')?.addEventListener('click', () => mpSocket.emit(act.kind === 'buy' ? 'game:monopoly-buy' : 'game:monopoly-upgrade'));
   mp$('mpBtnTake')?.addEventListener('click', () => mpSocket.emit('game:monopoly-takeover'));
   mp$('mpBtnSkip')?.addEventListener('click', () => mpSocket.emit('game:monopoly-skip'));
@@ -303,8 +334,10 @@ async function handleUpdate(view) {
     state.players.forEach((p, i) => { if (!p.bankrupt) mpLastPositions[i] = p.position; });
     mpPositionsInit = true;
     renderBoard(state);
+    renderDiceBar(state);
     renderPlayers(state, view.myIndex);
     renderActions(view);
+    if (state.dice?.length === 2) showDiceResult(state.dice);
     return;
   }
 
@@ -326,21 +359,29 @@ async function handleUpdate(view) {
 
   state.players.forEach((p, i) => { if (!p.bankrupt) mpLastPositions[i] = p.position; });
 
+  renderDiceBar(state);
   renderPlayers(state, view.myIndex);
   renderActions(view);
 
-  if (anim?.type === 'dice' && anim.values) {
+  const hasDice = state.dice?.length === 2;
+  const centerType = anim?.type;
+
+  if (centerType === 'dice' && anim.values) {
     showDiceCenter(anim.values.map(() => '?'));
     await sleep(650);
-    showDiceResult(anim.values);
-  } else if (anim?.type === 'build') {
+    showDiceResult(state.dice);
+  } else if (centerType === 'build') {
     showBuildCenter(state, anim);
-  } else if (anim?.type === 'chance') {
+  } else if (centerType === 'chance') {
     showChanceCenter(state.lastChanceCard || anim.text || '機會卡');
-  } else if (anim?.type === 'rent') {
+  } else if (centerType === 'rent') {
     showRentCenter(anim.amount);
-  } else if (anim?.type === 'tax') {
+  } else if (centerType === 'tax') {
     showTaxCenter(anim.text || '稅務', anim.amount || 0);
+  } else if (centerType === 'bank') {
+    showBankCenter(anim.text || '銀行', anim.amount);
+  } else if (hasDice) {
+    showDiceResult(state.dice);
   }
 }
 

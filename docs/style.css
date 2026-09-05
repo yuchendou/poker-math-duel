@@ -2219,6 +2219,34 @@ button.mj-tile:not(.disabled):hover .mj-tile-body {
   overflow: hidden;
 }
 .mp-cell.property { min-height: 64px; }
+.mp-cell.bank {
+  background: linear-gradient(145deg, #1e3a5f, #0f2744);
+  border-color: #38bdf8;
+}
+.mp-cell.bank .mp-name { color: #7dd3fc; }
+.mp-cell.gotojail {
+  background: linear-gradient(145deg, #3f1d1d, #1a0a0a);
+  border-color: #f87171;
+}
+.mp-cell.gotojail .mp-name { color: #fca5a5; }
+.mp-dice-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.75rem;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 10px;
+}
+.mp-dice-bar-label { font-size: 0.75rem; color: #94a3b8; font-weight: 600; }
+.mp-dice-bar-dice { display: flex; gap: 0.4rem; align-items: center; }
+.mp-dice-bar-die {
+  width: 2rem; height: 2rem; background: #fff; color: #0f172a;
+  border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem; font-weight: 900;
+}
+.mp-dice-bar-sum { font-size: 0.85rem; color: #fbbf24; font-weight: 700; }
 .mp-bar { height: 7px; flex-shrink: 0; }
 .mp-cell-body {
   flex: 1;
@@ -2506,6 +2534,23 @@ button.mj-tile:not(.disabled):hover .mj-tile-body {
 }
 .mp-tax-flash span { font-size: 1.75rem; display: block; margin-bottom: 0.25rem; }
 .mp-tax-flash p { font-weight: 700; margin: 0; line-height: 1.35; }
+
+/* 銀行中央動畫 */
+.mp-bank-flash {
+  background: linear-gradient(145deg, #0c4a6e, #082f49);
+  color: #bae6fd; border-radius: 14px; padding: 1.25rem 1.75rem;
+  text-align: center; border: 2px solid #38bdf8;
+  box-shadow: 0 8px 24px rgba(56,189,248,.35);
+}
+.mp-bank-flash span { font-size: 2.5rem; display: block; margin-bottom: 0.35rem; }
+.mp-bank-flash p { font-weight: 800; font-size: 1rem; margin: 0; line-height: 1.35; }
+
+.btn-danger {
+  background: #dc2626;
+  color: #fff;
+  border: 1px solid #b91c1c;
+}
+.btn-danger:hover { background: #b91c1c; }
 
 /* 玩家加成標籤 */
 .mp-bonus-tag { display: block; font-size: 0.65rem; color: #94a3b8; margin-top: 2px; }

@@ -1176,20 +1176,37 @@ def on_monopoly_takeover():
     _monopoly_apply(room, code, sid, mp.takeover_property)
 
 
-@socketio.on("game:monopoly-jail-bail")
-def on_monopoly_jail_bail():
+@socketio.on("game:monopoly-bank-fee")
+def on_monopoly_bank_fee():
     from flask import request
     sid = request.sid
     code = sid_to_room.get(sid)
     room = rooms.get(code)
     if not room:
         return
-    rnd = room.get("round")
-    if not rnd or mp.player_index_for_sid(rnd, sid) != rnd["currentPlayerIndex"]:
-        emit("game:monopoly-error", {"message": "還沒輪到你"})
+    _monopoly_apply(room, code, sid, mp.pay_bank_fee)
+
+
+@socketio.on("game:monopoly-sell-bank")
+def on_monopoly_sell_bank():
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room:
         return
-    room["round"] = mp.pay_jail_bail(rnd)
-    _emit_monopoly(room, code)
+    _monopoly_apply(room, code, sid, mp.sell_to_bank)
+
+
+@socketio.on("game:monopoly-bankrupt")
+def on_monopoly_bankrupt():
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room:
+        return
+    _monopoly_apply(room, code, sid, mp.declare_bankrupt)
 
 
 @socketio.on("disconnect")
