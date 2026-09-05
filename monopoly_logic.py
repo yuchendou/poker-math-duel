@@ -1,88 +1,82 @@
-"""台北新北大富翁 — 雙人連線（三階建設、搶購機制）"""
+"""台北新北大富翁 — v3 動畫、立體建築、角色加成"""
 from __future__ import annotations
 
 import copy
 import random
-from typing import Any
+from typing import Any, Callable
 
 BOARD_SIZE = 40
 START_BONUS = 3000
 START_MONEY = 25000
 JAIL_POSITION = 10
 TAKEOVER_MULT = 1.5
+COLOR_SET_BONUS = 1.5
 
-# 升級成本：第1次=地價，第2次=60%地價，第3次=100%地價
 UPGRADE_RATIOS = [1.0, 0.6, 1.0]
-RENT_MULT = {1: 1.0, 2: 2.8, 3: 6.0}
+RENT_MULT = {1: 1.0, 2: 3.0, 3: 7.0}
 LEVEL_NAMES = {1: "小公寓", 2: "高樓大廈", 3: "地標"}
-LEVEL_ICONS = {1: "🏠", 2: "🏢", 3: "🗼"}
 
 FOOD_AVATARS = [
-    {"id": "lurou", "emoji": "🍚", "name": "滷肉飯"},
-    {"id": "beef", "emoji": "🍜", "name": "牛肉麵"},
-    {"id": "boba", "emoji": "🧋", "name": "珍珠奶茶"},
-    {"id": "xlb", "emoji": "🥟", "name": "小籠包"},
-    {"id": "oyster", "emoji": "🦪", "name": "蚵仔煎"},
-    {"id": "pineapple", "emoji": "🍍", "name": "鳳梨酥"},
-    {"id": "luwei", "emoji": "🍢", "name": "滷味"},
-    {"id": "chicken", "emoji": "🍗", "name": "雞排"},
-    {"id": "tofu", "emoji": "🍮", "name": "豆花"},
-    {"id": "bento", "emoji": "🍱", "name": "便當"},
+    {"id": "lurou", "emoji": "🍚", "name": "滷肉飯", "bonus": "經過起點額外 +$800"},
+    {"id": "beef", "emoji": "🍜", "name": "牛肉麵", "bonus": "升級費用 -12%"},
+    {"id": "boba", "emoji": "🧋", "name": "珍珠奶茶", "bonus": "機會卡獎金 +25%"},
+    {"id": "xlb", "emoji": "🥟", "name": "小籠包", "bonus": "搶購費用 -10%"},
+    {"id": "oyster", "emoji": "🦪", "name": "蚵仔煎", "bonus": "收到的過路費 +15%"},
+    {"id": "pineapple", "emoji": "🍍", "name": "鳳梨酥", "bonus": "被搶購時多收 12%"},
+    {"id": "luwei", "emoji": "🍢", "name": "滷味", "bonus": "稅金 -20%"},
+    {"id": "chicken", "emoji": "🍗", "name": "雞排", "bonus": "首次購地 -8%"},
+    {"id": "tofu", "emoji": "🍮", "name": "豆花", "bonus": "休息區恢復 $500"},
+    {"id": "bento", "emoji": "🍱", "name": "便當", "bonus": "同色地產加成 +30%"},
 ]
+
+CHAR_BONUS = {f["emoji"]: f for f in FOOD_AVATARS}
 
 BOARD: list[dict[str, Any]] = [
     {"type": "start", "id": 0, "name": "出發"},
-    {"type": "property", "id": 1, "name": "萬華", "price": 1200, "rent": 300, "color": "brown", "landmark": "🏮"},
+    {"type": "property", "id": 1, "name": "萬華", "price": 1200, "rent": 300, "color": "brown", "landmark": "龍山寺"},
     {"type": "chance", "id": 2, "name": "機會"},
-    {"type": "property", "id": 3, "name": "大同", "price": 1200, "rent": 300, "color": "brown", "landmark": "🎭"},
-    {"type": "property", "id": 4, "name": "三重", "price": 1600, "rent": 450, "color": "lightblue", "landmark": "🌉"},
+    {"type": "property", "id": 3, "name": "大同", "price": 1200, "rent": 300, "color": "brown", "landmark": "迪化街"},
+    {"type": "property", "id": 4, "name": "三重", "price": 1600, "rent": 450, "color": "lightblue", "landmark": "重新橋"},
     {"type": "tax", "id": 5, "name": "地價稅", "tax": 800},
-    {"type": "property", "id": 6, "name": "蘆洲", "price": 1800, "rent": 500, "color": "lightblue", "landmark": "⛩️"},
-    {"type": "property", "id": 7, "name": "五股", "price": 2000, "rent": 550, "color": "lightblue", "landmark": "🏭"},
-    {"type": "property", "id": 8, "name": "泰山", "price": 2200, "rent": 600, "color": "pink", "landmark": "🌸"},
-    {"type": "property", "id": 9, "name": "林口", "price": 2400, "rent": 650, "color": "pink", "landmark": "✈️"},
+    {"type": "property", "id": 6, "name": "蘆洲", "price": 1800, "rent": 500, "color": "lightblue", "landmark": "廟口"},
+    {"type": "property", "id": 7, "name": "五股", "price": 2000, "rent": 550, "color": "lightblue", "landmark": "觀音山"},
+    {"type": "property", "id": 8, "name": "泰山", "price": 2200, "rent": 600, "color": "pink", "landmark": "明志科大"},
+    {"type": "property", "id": 9, "name": "林口", "price": 2400, "rent": 650, "color": "pink", "landmark": "三井Outlet"},
     {"type": "jail", "id": 10, "name": "探監"},
-    {"type": "property", "id": 11, "name": "板橋", "price": 2800, "rent": 800, "color": "orange", "landmark": "🚉"},
+    {"type": "property", "id": 11, "name": "板橋", "price": 2800, "rent": 800, "color": "orange", "landmark": "大遠百"},
     {"type": "chance", "id": 12, "name": "機會"},
-    {"type": "property", "id": 13, "name": "中和", "price": 3000, "rent": 850, "color": "orange", "landmark": "🌳"},
-    {"type": "property", "id": 14, "name": "永和", "price": 3200, "rent": 900, "color": "orange", "landmark": "🏪"},
-    {"type": "property", "id": 15, "name": "新店", "price": 3400, "rent": 950, "color": "red", "landmark": "🌲"},
-    {"type": "property", "id": 16, "name": "土城", "price": 3600, "rent": 1000, "color": "red", "landmark": "🛤️"},
-    {"type": "property", "id": 17, "name": "樹林", "price": 3800, "rent": 1050, "color": "red", "landmark": "🚂"},
-    {"type": "property", "id": 18, "name": "汐止", "price": 4000, "rent": 1100, "color": "yellow", "landmark": "🏔️"},
-    {"type": "property", "id": 19, "name": "內湖", "price": 4500, "rent": 1250, "color": "yellow", "landmark": "💻"},
+    {"type": "property", "id": 13, "name": "中和", "price": 3000, "rent": 850, "color": "orange", "landmark": "環球"},
+    {"type": "property", "id": 14, "name": "永和", "price": 3200, "rent": 900, "color": "orange", "landmark": "比漾"},
+    {"type": "property", "id": 15, "name": "新店", "price": 3400, "rent": 950, "color": "red", "landmark": "碧潭"},
+    {"type": "property", "id": 16, "name": "土城", "price": 3600, "rent": 1000, "color": "red", "landmark": "樂利"},
+    {"type": "property", "id": 17, "name": "樹林", "price": 3800, "rent": 1050, "color": "red", "landmark": "山佳"},
+    {"type": "property", "id": 18, "name": "汐止", "price": 4000, "rent": 1100, "color": "yellow", "landmark": "iPark"},
+    {"type": "property", "id": 19, "name": "內湖", "price": 4500, "rent": 1250, "color": "yellow", "landmark": "Costco"},
     {"type": "parking", "id": 20, "name": "休息"},
-    {"type": "property", "id": 21, "name": "南港", "price": 4800, "rent": 1350, "color": "yellow", "landmark": "🎵"},
+    {"type": "property", "id": 21, "name": "南港", "price": 4800, "rent": 1350, "color": "yellow", "landmark": "軟體園區"},
     {"type": "chance", "id": 22, "name": "機會"},
-    {"type": "property", "id": 23, "name": "松山", "price": 5200, "rent": 1450, "color": "green", "landmark": "🛫"},
-    {"type": "property", "id": 24, "name": "信義", "price": 6000, "rent": 1700, "color": "green", "landmark": "🏙️"},
-    {"type": "property", "id": 25, "name": "大安", "price": 6500, "rent": 1850, "color": "green", "landmark": "🌿"},
+    {"type": "property", "id": 23, "name": "松山", "price": 5200, "rent": 1450, "color": "green", "landmark": "松山文創"},
+    {"type": "property", "id": 24, "name": "信義", "price": 6000, "rent": 1700, "color": "green", "landmark": "微風"},
+    {"type": "property", "id": 25, "name": "大安", "price": 6500, "rent": 1850, "color": "green", "landmark": "永康街"},
     {"type": "tax", "id": 26, "name": "奢侈稅", "tax": 1500},
-    {"type": "property", "id": 27, "name": "中山", "price": 7000, "rent": 2000, "color": "darkblue", "landmark": "🎨"},
-    {"type": "property", "id": 28, "name": "中正", "price": 7500, "rent": 2100, "color": "darkblue", "landmark": "🏛️"},
-    {"type": "property", "id": 29, "name": "士林", "price": 8000, "rent": 2250, "color": "darkblue", "landmark": "🎡"},
+    {"type": "property", "id": 27, "name": "中山", "price": 7000, "rent": 2000, "color": "darkblue", "landmark": "光點台北"},
+    {"type": "property", "id": 28, "name": "中正", "price": 7500, "rent": 2100, "color": "darkblue", "landmark": "總統府"},
+    {"type": "property", "id": 29, "name": "士林", "price": 8000, "rent": 2250, "color": "darkblue", "landmark": "士林官邸"},
     {"type": "gotojail", "id": 30, "name": "入獄"},
-    {"type": "property", "id": 31, "name": "北投", "price": 5500, "rent": 1550, "color": "green", "landmark": "♨️"},
-    {"type": "property", "id": 32, "name": "淡水", "price": 5000, "rent": 1400, "color": "yellow", "landmark": "🌅"},
+    {"type": "property", "id": 31, "name": "北投", "price": 5500, "rent": 1550, "color": "green", "landmark": "溫泉博物館"},
+    {"type": "property", "id": 32, "name": "淡水", "price": 5000, "rent": 1400, "color": "yellow", "landmark": "漁人碼頭"},
     {"type": "chance", "id": 33, "name": "機會"},
-    {"type": "property", "id": 34, "name": "八里", "price": 4200, "rent": 1150, "color": "red", "landmark": "🚴"},
-    {"type": "property", "id": 35, "name": "新莊", "price": 3800, "rent": 1050, "color": "orange", "landmark": "🏟️"},
-    {"type": "property", "id": 36, "name": "深坑", "price": 3500, "rent": 980, "color": "pink", "landmark": "🧀"},
-    {"type": "property", "id": 37, "name": "101大樓", "price": 10000, "rent": 3000, "color": "premium", "landmark": "🏬"},
-    {"type": "property", "id": 38, "name": "西門町", "price": 8500, "rent": 2400, "color": "darkblue", "landmark": "🛍️"},
-    {"type": "property", "id": 39, "name": "象山", "price": 7200, "rent": 2050, "color": "darkblue", "landmark": "🌃"},
+    {"type": "property", "id": 34, "name": "八里", "price": 4200, "rent": 1150, "color": "red", "landmark": "左岸"},
+    {"type": "property", "id": 35, "name": "新莊", "price": 3800, "rent": 1050, "color": "orange", "landmark": "體育場"},
+    {"type": "property", "id": 36, "name": "深坑", "price": 3500, "rent": 980, "color": "pink", "landmark": "豆腐街"},
+    {"type": "property", "id": 37, "name": "101大樓", "price": 10000, "rent": 3000, "color": "premium", "landmark": "台北101"},
+    {"type": "property", "id": 38, "name": "西門町", "price": 8500, "rent": 2400, "color": "darkblue", "landmark": "紅樓"},
+    {"type": "property", "id": 39, "name": "象山", "price": 7200, "rent": 2050, "color": "darkblue", "landmark": "象山步道"},
 ]
 
 COLOR_MAP = {
-    "brown": "#92400e",
-    "lightblue": "#38bdf8",
-    "pink": "#ec4899",
-    "orange": "#f97316",
-    "red": "#dc2626",
-    "yellow": "#eab308",
-    "green": "#16a34a",
-    "darkblue": "#1d4ed8",
-    "premium": "#a855f7",
+    "brown": "#92400e", "lightblue": "#38bdf8", "pink": "#ec4899", "orange": "#f97316",
+    "red": "#dc2626", "yellow": "#eab308", "green": "#16a34a", "darkblue": "#1d4ed8", "premium": "#a855f7",
 }
 
 
@@ -98,86 +92,94 @@ def get_prop_state(state: dict, pid: int) -> dict | None:
     return state.get("propertyStates", {}).get(_prop_key(pid))
 
 
+def _player(state: dict, pid: int) -> dict:
+    return state["players"][pid]
+
+
+def owns_color_set(state: dict, owner_id: int, color: str | None) -> bool:
+    if not color:
+        return False
+    props = [s for s in BOARD if s.get("type") == "property" and s.get("color") == color]
+    for s in props:
+        ps = get_prop_state(state, s["id"])
+        if not ps or ps.get("ownerId") != owner_id:
+            return False
+    return True
+
+
 def investment_value(base: int, level: int) -> int:
     if level <= 0:
         return 0
-    total = 0
-    for i in range(level):
-        total += int(base * UPGRADE_RATIOS[i])
-    return total
+    return sum(int(base * UPGRADE_RATIOS[i]) for i in range(level))
 
 
-def upgrade_cost(base: int, current_level: int) -> int | None:
+def upgrade_cost(state: dict, base: int, current_level: int, buyer_id: int) -> int | None:
     if current_level >= 3:
         return None
-    return int(base * UPGRADE_RATIOS[current_level])
+    cost = int(base * UPGRADE_RATIOS[current_level])
+    av = _player(state, buyer_id).get("avatar")
+    if current_level == 0 and av == "🍗":
+        cost = int(cost * 0.92)
+    if current_level > 0 and av == "🍜":
+        cost = int(cost * 0.88)
+    return cost
 
 
-def takeover_cost(base: int, level: int) -> int:
-    return int(investment_value(base, level) * TAKEOVER_MULT)
+def takeover_cost(state: dict, base: int, level: int, buyer_id: int) -> int:
+    cost = int(investment_value(base, level) * TAKEOVER_MULT)
+    if _player(state, buyer_id).get("avatar") == "🥟":
+        cost = int(cost * 0.9)
+    return cost
 
 
-def calc_rent(space: dict, level: int) -> int:
-    return int(space["rent"] * RENT_MULT.get(level, 1))
+def calc_rent(state: dict, space: dict, owner_id: int, level: int) -> int:
+    rent = int(space["rent"] * RENT_MULT.get(level, 1))
+    owner = _player(state, owner_id)
+    if owns_color_set(state, owner_id, space.get("color")):
+        mult = COLOR_SET_BONUS
+        if owner.get("avatar") == "🍱":
+            mult = 1.5 * 1.3
+        rent = int(rent * mult)
+    if owner.get("avatar") == "🦪":
+        rent = int(rent * 1.15)
+    return rent
 
 
-def building_icon(space: dict, level: int) -> str:
-    if level == 3:
-        return space.get("landmark", "🗼")
-    return LEVEL_ICONS.get(level, "")
+def _set_anim(state: dict, anim: dict | None) -> None:
+    state["centerAnim"] = anim
 
 
-def create_initial_state(
-    player_names: list[str],
-    player_sids: list[str],
-    avatars: list[str] | None = None,
-) -> dict:
+def create_initial_state(names: list[str], sids: list[str], avatars: list[str] | None = None) -> dict:
     players = []
-    for i, name in enumerate(player_names):
+    for i, name in enumerate(names):
         av = (avatars[i] if avatars and i < len(avatars) else None) or FOOD_AVATARS[i % 10]["emoji"]
         players.append({
-            "id": i,
-            "sid": player_sids[i] if i < len(player_sids) else None,
+            "id": i, "sid": sids[i] if i < len(sids) else None,
             "name": (name or f"玩家 {i + 1}").strip()[:12] or f"玩家 {i + 1}",
-            "avatar": av,
-            "money": START_MONEY,
-            "position": 0,
-            "inJail": False,
-            "jailTurns": 0,
-            "bankrupt": False,
+            "avatar": av, "money": START_MONEY, "position": 0,
+            "inJail": False, "jailTurns": 0, "bankrupt": False,
         })
     return {
-        "phase": "rolling",
-        "players": players,
-        "currentPlayerIndex": 0,
-        "board": BOARD,
-        "propertyStates": {},
-        "dice": None,
-        "diceRolling": False,
-        "message": f"{players[0]['avatar']} {players[0]['name']} 的回合，請擲骰子！",
-        "pendingAction": None,
-        "winner": None,
-        "passStartBonus": START_BONUS,
-        "foodAvatars": FOOD_AVATARS,
+        "phase": "rolling", "players": players, "currentPlayerIndex": 0,
+        "board": BOARD, "propertyStates": {}, "dice": None, "diceRolling": False,
+        "message": f"{players[0]['avatar']} {players[0]['name']} 的回合",
+        "pendingAction": None, "winner": None, "passStartBonus": START_BONUS,
+        "foodAvatars": FOOD_AVATARS, "centerAnim": None,
+        "lastChanceCard": None,
     }
 
 
-def _active_players(players: list[dict]) -> list[dict]:
-    return [p for p in players if not p.get("bankrupt")]
-
-
 def _next_idx(state: dict) -> int:
-    total = len(state["players"])
     idx = state["currentPlayerIndex"]
-    for _ in range(total):
-        idx = (idx + 1) % total
+    for _ in range(len(state["players"])):
+        idx = (idx + 1) % len(state["players"])
         if not state["players"][idx].get("bankrupt"):
             return idx
     return state["currentPlayerIndex"]
 
 
 def _check_winner(state: dict) -> dict:
-    alive = _active_players(state["players"])
+    alive = [p for p in state["players"] if not p.get("bankrupt")]
     if len(alive) == 1:
         w = alive[0]
         state["phase"] = "gameover"
@@ -189,12 +191,9 @@ def _check_winner(state: dict) -> dict:
 def _end_turn(state: dict, message: str | None = None) -> dict:
     nxt = _next_idx(state)
     p = state["players"][nxt]
-    state["phase"] = "rolling"
-    state["currentPlayerIndex"] = nxt
-    state["dice"] = None
-    state["diceRolling"] = False
-    state["pendingAction"] = None
-    state["message"] = message or f"{p['avatar']} {p['name']} 的回合，請擲骰子！"
+    state.update({"phase": "rolling", "currentPlayerIndex": nxt, "dice": None,
+                  "diceRolling": False, "pendingAction": None, "centerAnim": None})
+    state["message"] = message or f"{p['avatar']} {p['name']} 的回合"
     return _check_winner(state)
 
 
@@ -204,115 +203,110 @@ def _set_pending(state: dict, action: dict) -> dict:
     return state
 
 
-def _move(state: dict, steps: int) -> dict:
+def _move_with_anim(state: dict, steps: int) -> dict:
     cur = state["players"][state["currentPlayerIndex"]]
     old = cur["position"]
     new = (old + steps + BOARD_SIZE) % BOARD_SIZE
+    path = [(old + i + 1) % BOARD_SIZE for i in range(abs(steps))] if steps > 0 else []
     cur["position"] = new
+    bonus = 0
     if steps > 0 and new < old:
-        cur["money"] += state["passStartBonus"]
+        bonus = state["passStartBonus"]
+        buffs = state.setdefault("buffs", {})
+        if buffs.pop(str(cur["id"]), None) == "double_start":
+            bonus *= 2
+        if cur.get("avatar") == "🍚":
+            bonus += 800
+        cur["money"] += bonus
     state["phase"] = "moving"
+    _set_anim(state, {
+        "type": "move", "from": old, "to": new, "path": path,
+        "playerIndex": state["currentPlayerIndex"], "passBonus": bonus,
+    })
     return state
 
 
-def _transfer_prop(state: dict, pid: int, new_owner: int, new_level: int) -> None:
-    state["propertyStates"][_prop_key(pid)] = {
-        "ownerId": new_owner,
-        "level": new_level,
-    }
+def _transfer_prop(state: dict, pid: int, owner: int, level: int) -> None:
+    state.setdefault("propertyStates", {})[_prop_key(pid)] = {"ownerId": owner, "level": level}
 
 
-def _remove_props_of_player(state: dict, player_id: int, recipient_id: int | None = None) -> None:
-    for key, ps in list(state.get("propertyStates", {}).items()):
+def _remove_props(state: dict, player_id: int, to_id: int | None = None) -> None:
+    for k, ps in list(state.get("propertyStates", {}).items()):
         if ps.get("ownerId") == player_id:
-            if recipient_id is not None:
-                ps["ownerId"] = recipient_id
+            if to_id is not None:
+                ps["ownerId"] = to_id
             else:
-                del state["propertyStates"][key]
+                del state["propertyStates"][k]
 
 
 def _handle_landing(state: dict) -> dict:
     cur = state["players"][state["currentPlayerIndex"]]
     space = state["board"][cur["position"]]
-    st = space["type"]
-    pid = space["id"]
+    st, pid = space["type"], space["id"]
 
     if st == "start":
-        return _end_turn(state, f"{cur['avatar']} {cur['name']} 經過起點 +${state['passStartBonus']}")
+        return _end_turn(state, f"經過起點 +${state.get('centerAnim', {}).get('passBonus', state['passStartBonus'])}")
+    if st == "chance":
+        return _set_pending(state, {"kind": "chance", "message": "抽到機會卡！翻開看看"})
+    if st == "tax":
+        tax = space["tax"]
+        if cur.get("avatar") == "🍢":
+            tax = int(tax * 0.8)
+        return _set_pending(state, {"kind": "tax", "message": f"繳交 {space['name']} ${tax}", "amount": tax})
+    if st == "jail":
+        return _end_turn(state, "路過探監")
+    if st == "parking":
+        if cur.get("avatar") == "🍮":
+            cur["money"] += 500
+            return _end_turn(state, "休息區恢復 $500（豆花加成）")
+        return _end_turn(state, "在休息區")
+    if st == "gotojail":
+        cur.update({"position": JAIL_POSITION, "inJail": True, "jailTurns": 0})
+        _set_anim(state, {"type": "jail", "playerIndex": state["currentPlayerIndex"]})
+        return _end_turn(state, "入獄！")
+
     if st != "property":
-        if st == "chance":
-            return _set_pending(state, {"kind": "chance", "message": f"{cur['avatar']} 抽到機會卡！"})
-        if st == "tax":
-            return _set_pending(state, {
-                "kind": "tax",
-                "message": f"繳交 {space['name']} ${space['tax']}",
-                "amount": space["tax"],
-            })
-        if st == "jail":
-            return _end_turn(state, f"{cur['name']} 路過探監")
-        if st == "parking":
-            return _end_turn(state, f"{cur['name']} 在休息區")
-        if st == "gotojail":
-            cur["position"] = JAIL_POSITION
-            cur["inJail"] = True
-            cur["jailTurns"] = 0
-            return _end_turn(state, f"{cur['name']} 入獄！")
         return _end_turn(state)
 
     ps = get_prop_state(state, pid)
     base = space["price"]
 
     if not ps:
-        cost = upgrade_cost(base, 0)
+        cost = upgrade_cost(state, base, 0, cur["id"])
         return _set_pending(state, {
-            "kind": "buy",
-            "message": f"「{space['name']}」空地！${cost} 蓋小公寓 🏠",
-            "amount": cost,
-            "propertyId": pid,
-            "nextLevel": 1,
+            "kind": "buy", "message": f"「{space['name']}」空地，蓋小公寓 ${cost}",
+            "amount": cost, "propertyId": pid, "nextLevel": 1,
+            "rentPreview": calc_rent(state, space, cur["id"], 1),
         })
 
-    owner_id = ps["ownerId"]
-    level = ps["level"]
+    owner_id, level = ps["ownerId"], ps["level"]
 
     if owner_id == cur["id"]:
         if level >= 3:
-            icon = building_icon(space, 3)
-            return _end_turn(state, f"{space['name']} 已是地標 {icon}，無法再升級")
-        cost = upgrade_cost(base, level)
+            return _end_turn(state, f"{space['name']} 已是地標「{space.get('landmark')}」")
+        cost = upgrade_cost(state, base, level, cur["id"])
         nxt = level + 1
-        label = LEVEL_NAMES[nxt]
-        icon = LEVEL_ICONS.get(nxt, "🗼") if nxt < 3 else building_icon(space, 3)
         return _set_pending(state, {
             "kind": "upgrade",
-            "message": f"升級 {space['name']} → {label} {icon}，費用 ${cost}",
-            "amount": cost,
-            "propertyId": pid,
-            "nextLevel": nxt,
+            "message": f"升級 {space['name']} → {LEVEL_NAMES[nxt]} ${cost}",
+            "amount": cost, "propertyId": pid, "nextLevel": nxt,
+            "rentPreview": calc_rent(state, space, cur["id"], nxt),
         })
 
-    if level >= 3:
-        owner = state["players"][owner_id]
-        rent = calc_rent(space, 3)
-        return _set_pending(state, {
-            "kind": "rent",
-            "message": f"{space['name']} 地標 {building_icon(space,3)}！向 {owner['avatar']}{owner['name']} 付 ${rent}",
-            "amount": rent,
-            "propertyId": pid,
-        })
-
-    cost = takeover_cost(base, level)
-    owner = state["players"][owner_id]
-    nxt = level + 1
-    label = LEVEL_NAMES.get(nxt, "地標")
-    return _set_pending(state, {
-        "kind": "takeover",
-        "message": f"搶購 {space['name']}！向 {owner['avatar']}{owner['name']} 付 ${cost}（1.5倍）→ {label}",
-        "amount": cost,
-        "propertyId": pid,
-        "nextLevel": nxt,
-        "sellerId": owner_id,
-    })
+    owner = _player(state, owner_id)
+    rent = calc_rent(state, space, owner_id, level)
+    action = {
+        "kind": "rent",
+        "message": f"停在 {owner['avatar']}{owner['name']} 的 {space['name']}（{LEVEL_NAMES[level]}）過路費 ${rent}",
+        "amount": rent, "propertyId": pid, "rentLevel": level,
+    }
+    if level < 3:
+        tcost = takeover_cost(state, base, level, cur["id"])
+        action["takeoverAmount"] = tcost
+        action["takeoverLevel"] = level + 1
+        action["sellerId"] = owner_id
+        action["message"] += f"　或搶購 ${tcost}"
+    return _set_pending(state, action)
 
 
 def roll_dice(state: dict) -> dict:
@@ -324,41 +318,46 @@ def roll_dice(state: dict) -> dict:
     total = d1 + d2
     state["dice"] = [d1, d2]
     state["diceRolling"] = True
+    _set_anim(state, {"type": "dice", "values": [d1, d2]})
 
     if cur.get("inJail"):
         if d1 == d2:
-            cur["inJail"] = False
-            cur["jailTurns"] = 0
-            state = _move(state, total)
+            cur.update({"inJail": False, "jailTurns": 0})
+            state = _move_with_anim(state, total)
             state["diceRolling"] = False
-            state["message"] = f"雙骰出獄！{d1}+{d2}={total}"
             return _handle_landing(state)
         cur["jailTurns"] = cur.get("jailTurns", 0) + 1
         if cur["jailTurns"] >= 3:
-            cur["inJail"] = False
-            cur["jailTurns"] = 0
-            cur["money"] = max(0, cur["money"] - 800)
-            state = _move(state, total)
+            cur.update({"inJail": False, "jailTurns": 0, "money": max(0, cur["money"] - 800)})
+            state = _move_with_anim(state, total)
             state["diceRolling"] = False
             return _handle_landing(state)
         state["diceRolling"] = False
         return _end_turn(state, f"監獄中（{cur['jailTurns']}/3）")
 
-    state = _move(state, total)
+    state = _move_with_anim(state, total)
     state["diceRolling"] = False
     state["message"] = f"擲出 {d1}+{d2}={total}"
     return _handle_landing(state)
 
 
-def _apply_build(state: dict, pid: int, cost: int, level: int, seller_id: int | None = None) -> dict | None:
+def _apply_build(state: dict, pid: int, cost: int, level: int, seller: int | None = None) -> bool:
     cur = state["players"][state["currentPlayerIndex"]]
     if cur["money"] < cost:
-        return None
+        return False
     cur["money"] -= cost
-    if seller_id is not None:
-        state["players"][seller_id]["money"] += cost
+    if seller is not None:
+        pay = cost
+        if _player(state, seller).get("avatar") == "🍍":
+            pay = int(pay * 1.12)
+        state["players"][seller]["money"] += pay
     _transfer_prop(state, pid, cur["id"], level)
-    return state
+    space = next(s for s in state["board"] if s["id"] == pid)
+    _set_anim(state, {
+        "type": "build", "level": level, "propertyId": pid,
+        "propertyName": space["name"], "landmark": space.get("landmark", ""),
+    })
+    return True
 
 
 def buy_property(state: dict) -> dict:
@@ -370,7 +369,21 @@ def upgrade_property(state: dict) -> dict:
 
 
 def takeover_property(state: dict) -> dict:
-    return _do_build(state, "takeover")
+    state = _clone(state)
+    act = state.get("pendingAction") or {}
+    if act.get("kind") == "rent" and act.get("takeoverAmount"):
+        act = {
+            "kind": "takeover", "amount": act["takeoverAmount"],
+            "nextLevel": act["takeoverLevel"], "propertyId": act["propertyId"],
+            "sellerId": act.get("sellerId"),
+        }
+    elif act.get("kind") != "takeover":
+        return state
+    cur = state["players"][state["currentPlayerIndex"]]
+    if not _apply_build(state, act["propertyId"], act["amount"], act["nextLevel"], act.get("sellerId")):
+        return _end_turn(state, "資金不足")
+    space = next(s for s in state["board"] if s["id"] == act["propertyId"])
+    return _end_turn(state, f"{cur['avatar']} 搶購 {space['name']} → {LEVEL_NAMES[act['nextLevel']]}")
 
 
 def _do_build(state: dict, kind: str) -> dict:
@@ -379,48 +392,31 @@ def _do_build(state: dict, kind: str) -> dict:
     if act.get("kind") != kind:
         return state
     cur = state["players"][state["currentPlayerIndex"]]
-    pid = act["propertyId"]
-    cost = act["amount"]
-    level = act["nextLevel"]
-    seller = act.get("sellerId")
-    space = next(s for s in state["board"] if s.get("id") == pid)
-
-    result = _apply_build(state, pid, cost, level, seller)
-    if not result:
-        return _end_turn(state, f"{cur['name']} 資金不足")
-
-    icon = building_icon(space, level) if level == 3 else LEVEL_ICONS.get(level, "🏠")
-    label = LEVEL_NAMES.get(level, "")
-    if kind == "takeover":
-        msg = f"{cur['avatar']} 搶購 {space['name']}！升級為 {label}{icon}"
-    elif kind == "upgrade":
-        msg = f"{cur['avatar']} 升級 {space['name']} → {label}{icon}"
-    else:
-        msg = f"{cur['avatar']} 在 {space['name']} 蓋了 {label}{icon}"
-    return _end_turn(state, msg)
+    if not _apply_build(state, act["propertyId"], act["amount"], act["nextLevel"], act.get("sellerId")):
+        return _end_turn(state, "資金不足")
+    space = next(s for s in state["board"] if s["id"] == act["propertyId"])
+    return _end_turn(state, f"{cur['avatar']} {space['name']} → {LEVEL_NAMES[act['nextLevel']]}")
 
 
 def skip_action(state: dict) -> dict:
-    state = _clone(state)
-    name = state["players"][state["currentPlayerIndex"]]["name"]
-    return _end_turn(state, f"{name} 放棄")
+    return _end_turn(_clone(state), "放棄")
 
 
 def _pay(state: dict, amount: int, recipient: int | None = None) -> dict:
     cur = state["players"][state["currentPlayerIndex"]]
     if cur["money"] < amount:
         rem = cur["money"]
-        cur["bankrupt"] = True
-        cur["money"] = 0
+        cur.update({"bankrupt": True, "money": 0})
         if recipient is not None:
             state["players"][recipient]["money"] += rem
-            _remove_props_of_player(state, cur["id"], recipient)
+            _remove_props(state, cur["id"], recipient)
         else:
-            _remove_props_of_player(state, cur["id"])
+            _remove_props(state, cur["id"])
         return _check_winner(_end_turn(state, f"💸 {cur['name']} 破產！"))
     cur["money"] -= amount
     if recipient is not None:
         state["players"][recipient]["money"] += amount
+    _set_anim(state, {"type": "rent", "amount": amount, "playerIndex": state["currentPlayerIndex"]})
     return state
 
 
@@ -430,8 +426,7 @@ def pay_rent(state: dict) -> dict:
     if act.get("kind") != "rent":
         return state
     ps = get_prop_state(state, act["propertyId"])
-    owner_id = ps["ownerId"] if ps else 0
-    state = _pay(state, act["amount"], owner_id)
+    state = _pay(state, act["amount"], ps["ownerId"] if ps else None)
     if state["players"][state["currentPlayerIndex"]].get("bankrupt"):
         return state
     return _end_turn(state, f"支付過路費 ${act['amount']}")
@@ -448,25 +443,138 @@ def pay_tax(state: dict) -> dict:
     return _end_turn(state, f"繳稅 ${act['amount']}")
 
 
+def _chance_cards(state: dict) -> list[tuple[str, Callable[[dict], dict]]]:
+    idx = state["currentPlayerIndex"]
+    p = state["players"][idx]
+    name = p["name"]
+
+    def money(amt: int, msg: str):
+        def fn(s: dict) -> dict:
+            mult = 1.25 if p.get("avatar") == "🧋" and amt > 0 else 1.0
+            s["players"][idx]["money"] = max(0, s["players"][idx]["money"] + int(amt * mult))
+            s["lastChanceCard"] = msg
+            return s
+        return msg, fn
+
+    return [
+        money(1500, f"{name} 中樂透 +$1500"),
+        money(2000, f"{name} 政府補助 +$2000"),
+        money(2500, f"{name} 股票分紅 +$2500"),
+        money(800, f"{name} 撿到錢 +$800"),
+        money(600, f"{name} 夜市攤販小賺 +$600"),
+        money(-700, f"{name} 修車 -$700"),
+        money(-1000, f"{name} 罰單 -$1000"),
+        money(-500, f"{name} 醫藥費 -$500"),
+        money(-1200, f"{name} 水電費 -$1200"),
+        money(-800, f"{name} 被詐騙 -$800"),
+        (f"{name} 前進 4 格", lambda s: _move_with_anim(_clone(s), 4)),
+        (f"{name} 前進 2 格", lambda s: _move_with_anim(_clone(s), 2)),
+        (f"{name} 前進 6 格", lambda s: _move_with_anim(_clone(s), 6)),
+        (f"{name} 後退 3 格", lambda s: _move_with_anim(_clone(s), -3)),
+        (f"{name} 後退 5 格", lambda s: _move_with_anim(_clone(s), -5)),
+        (f"{name} 回到起點", lambda s: _goto_start(_clone(s), idx)),
+        (f"{name} 去探監", lambda s: _send_jail(_clone(s), idx)),
+        (f"全員給 {name} $300", lambda s: _collect_all(_clone(s), idx, 300)),
+        (f"全員給 {name} $500", lambda s: _collect_all(_clone(s), idx, 500)),
+        (f"{name} 免費升級一塊地", lambda s: _free_upgrade(_clone(s), idx)),
+        (f"{name} 免費蓋小公寓", lambda s: _free_buy(_clone(s), idx)),
+        money(1200, f"{name} 地產稅退稅 +$1200"),
+        (f"{name} 下次起點雙倍", lambda s: _double_start(_clone(s), idx)),
+        (f"{name} 休息區補給 +$400", lambda s: _rest_bonus(_clone(s), idx, 400)),
+        (f"{name} 交換位置（隨機）", lambda s: _swap_random(_clone(s), idx)),
+    ]
+
+
+def _goto_start(s: dict, idx: int) -> dict:
+    s["players"][idx]["position"] = 0
+    bonus = s["passStartBonus"] + (800 if s["players"][idx].get("avatar") == "🍚" else 0)
+    s["players"][idx]["money"] += bonus
+    s["lastChanceCard"] = "回到起點"
+    return s
+
+
+def _send_jail(s: dict, idx: int) -> dict:
+    s["players"][idx].update({"position": JAIL_POSITION, "inJail": True, "jailTurns": 0})
+    s["lastChanceCard"] = "被送去探監"
+    return s
+
+
+def _collect_all(s: dict, idx: int, amt: int) -> dict:
+    total = 0
+    for i, pl in enumerate(s["players"]):
+        if i != idx and not pl.get("bankrupt"):
+            pay = min(amt, pl["money"])
+            pl["money"] -= pay
+            total += pay
+    s["players"][idx]["money"] += total
+    s["lastChanceCard"] = f"收到紅包 ${total}"
+    return s
+
+
+def _free_upgrade(s: dict, idx: int) -> dict:
+    for k, ps in s.get("propertyStates", {}).items():
+        if ps.get("ownerId") == idx and ps.get("level", 0) < 3:
+            ps["level"] += 1
+            s["lastChanceCard"] = "免費升級一塊地產"
+            return s
+    s["lastChanceCard"] = "沒有可升級的地產"
+    return s
+
+
+def _double_start(s: dict, idx: int) -> dict:
+    s.setdefault("buffs", {})[str(idx)] = "double_start"
+    s["lastChanceCard"] = "下次起點獎金雙倍"
+    return s
+
+
+def _free_buy(s: dict, idx: int) -> dict:
+    for space in s["board"]:
+        if space.get("type") != "property":
+            continue
+        pid = space["id"]
+        if not get_prop_state(s, pid):
+            _transfer_prop(s, pid, idx, 1)
+            s["lastChanceCard"] = f"免費在 {space['name']} 蓋小公寓"
+            _set_anim(s, {"type": "build", "level": 1, "propertyId": pid,
+                          "propertyName": space["name"], "landmark": space.get("landmark", "")})
+            return s
+    s["lastChanceCard"] = "沒有空地可蓋"
+    return s
+
+
+def _rest_bonus(s: dict, idx: int, amt: int) -> dict:
+    s["players"][idx]["money"] += amt
+    s["lastChanceCard"] = f"休息補給 +${amt}"
+    return s
+
+
+def _swap_random(s: dict, idx: int) -> dict:
+    others = [i for i, pl in enumerate(s["players"]) if i != idx and not pl.get("bankrupt")]
+    if not others:
+        s["lastChanceCard"] = "沒有可交換的玩家"
+        return s
+    other = random.choice(others)
+    s["players"][idx]["position"], s["players"][other]["position"] = (
+        s["players"][other]["position"], s["players"][idx]["position"],
+    )
+    s["lastChanceCard"] = f"與 {s['players'][other]['name']} 交換位置"
+    return s
+
+
 def apply_chance_card(state: dict) -> dict:
     state = _clone(state)
+    cards = _chance_cards(state)
+    msg, fn = random.choice(cards)
     idx = state["currentPlayerIndex"]
-    name = state["players"][idx]["name"]
-    effects = [
-        lambda s: _money(s, idx, 1000, f"{name} 獲得 $1000"),
-        lambda s: _money(s, idx, -600, f"{name} 罰款 $600"),
-        lambda s: _move(_clone(s), 3),
-        lambda s: _move(_clone(s), -2),
-    ]
-    state = random.choice(effects)(state)
+    old_pos = state["players"][idx]["position"]
+    state = fn(state)
     state["pendingAction"] = None
-    return _handle_landing(state)
-
-
-def _money(state: dict, idx: int, amt: int, msg: str) -> dict:
-    state["players"][idx]["money"] = max(0, state["players"][idx]["money"] + amt)
-    state["message"] = msg
-    return state
+    if state.get("centerAnim", {}).get("type") != "build":
+        _set_anim(state, {"type": "chance", "text": state.get("lastChanceCard", msg)})
+    new_pos = state["players"][idx]["position"]
+    if new_pos != old_pos:
+        return _handle_landing(state)
+    return _end_turn(state, state.get("lastChanceCard", msg))
 
 
 def pay_jail_bail(state: dict) -> dict:
@@ -475,21 +583,17 @@ def pay_jail_bail(state: dict) -> dict:
     if not cur.get("inJail") or cur["money"] < 800:
         return state
     cur["money"] -= 800
-    cur["inJail"] = False
-    cur["jailTurns"] = 0
+    cur.update({"inJail": False, "jailTurns": 0})
     state["phase"] = "rolling"
-    state["message"] = f"{cur['name']} 付 $800 保釋"
     return state
 
 
 def build_client_view(state: dict, sid: str) -> dict:
     my_index = next((i for i, p in enumerate(state["players"]) if p.get("sid") == sid), 0)
     return {
-        "state": state,
-        "myIndex": my_index,
+        "state": state, "myIndex": my_index,
         "isMyTurn": state["currentPlayerIndex"] == my_index and state["phase"] != "gameover",
-        "colorMap": COLOR_MAP,
-        "levelIcons": LEVEL_ICONS,
+        "colorMap": COLOR_MAP, "foodAvatars": FOOD_AVATARS,
     }
 
 
@@ -499,5 +603,5 @@ def player_index_for_sid(state: dict, sid: str) -> int | None:
             return i
     return None
 
-# 相容舊函式名
+
 skip_buy = skip_action

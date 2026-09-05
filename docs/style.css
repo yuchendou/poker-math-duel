@@ -2282,9 +2282,103 @@ button.mj-tile:not(.disabled):hover .mj-tile-body {
   padding: 0.45rem 0.25rem; border-radius: 10px; border: 2px solid transparent;
   background: rgba(255,255,255,.06); cursor: pointer; font-size: 1.35rem; color: inherit;
 }
-.food-avatar-btn span { font-size: 0.55rem; color: #94a3b8; }
+.food-avatar-btn .food-name { font-size: 0.55rem; color: #94a3b8; }
+.food-avatar-btn .food-bonus { font-size: 0.48rem; color: #64748b; line-height: 1.2; display: none; }
 .food-avatar-btn.selected { border-color: #fbbf24; background: rgba(251,191,36,.12); }
+.food-avatar-btn.selected .food-bonus { display: block; color: #fbbf24; }
 .food-avatar-btn:hover { background: rgba(255,255,255,.1); }
+.food-bonus-hint { font-size: 0.78rem; color: #fbbf24; margin-top: 0.35rem; min-height: 1.2em; }
+
+/* 格子高亮（移動動畫） */
+.mp-cell.highlight {
+  box-shadow: inset 0 0 0 2px #fbbf24, 0 0 12px rgba(251,191,36,.45);
+  z-index: 2;
+}
+
+/* 中央舞台 */
+.mp-center-stage { min-height: 140px; display: flex; align-items: center; justify-content: center; width: 100%; }
+
+/* 通用 pop 動畫 */
+.anim-pop { animation: mpPop 0.55s cubic-bezier(.34,1.56,.64,1); }
+
+/* ── 棋盤格 3D 建築 ── */
+.b3d { --bc: #64748b; position: relative; margin: 2px 0; transform-style: preserve-3d; perspective: 120px; }
+.b3d-house { width: 22px; height: 20px; }
+.b3d-house .b3d-roof {
+  width: 0; height: 0;
+  border-left: 11px solid transparent; border-right: 11px solid transparent;
+  border-bottom: 8px solid color-mix(in srgb, var(--bc) 80%, #000);
+  margin: 0 auto;
+}
+.b3d-house .b3d-body {
+  width: 18px; height: 10px; margin: 0 auto;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--bc) 70%, #fff), var(--bc));
+  border: 1px solid color-mix(in srgb, var(--bc) 60%, #000);
+  box-shadow: 2px 2px 0 rgba(0,0,0,.35);
+}
+.b3d-tower { width: 20px; height: 24px; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.b3d-tower .b3d-t1, .b3d-tower .b3d-t2, .b3d-tower .b3d-t3 {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--bc) 65%, #fff), var(--bc));
+  border: 1px solid color-mix(in srgb, var(--bc) 50%, #000);
+  box-shadow: 1px 1px 0 rgba(0,0,0,.3);
+}
+.b3d-tower .b3d-t1 { width: 16px; height: 7px; }
+.b3d-tower .b3d-t2 { width: 13px; height: 7px; }
+.b3d-tower .b3d-t3 { width: 10px; height: 7px; }
+.b3d-landmark { width: 24px; height: 28px; display: flex; flex-direction: column; align-items: center; }
+.b3d-landmark .b3d-spire {
+  width: 4px; height: 10px;
+  background: linear-gradient(180deg, #fbbf24, var(--bc));
+  border-radius: 2px 2px 0 0;
+}
+.b3d-landmark .b3d-lbase {
+  width: 20px; height: 14px;
+  background: linear-gradient(145deg, color-mix(in srgb, var(--bc) 60%, #fff), var(--bc));
+  border: 1px solid color-mix(in srgb, var(--bc) 40%, #000);
+  clip-path: polygon(10% 0, 90% 0, 100% 100%, 0 100%);
+  box-shadow: 2px 3px 0 rgba(0,0,0,.4);
+}
+.b3d-label { font-size: 0.45rem; color: #fbbf24; font-weight: 800; margin-top: 1px; line-height: 1; }
+
+/* ── 中央大號 3D 建築（蓋房動畫） ── */
+.cb3d { --bc: #64748b; transform-style: preserve-3d; filter: drop-shadow(0 12px 24px rgba(0,0,0,.5)); }
+.cb3d-house { width: 80px; }
+.cb3d-house .b3d-roof {
+  border-left-width: 40px; border-right-width: 40px; border-bottom-width: 28px;
+  border-bottom-color: color-mix(in srgb, var(--bc) 75%, #000);
+}
+.cb3d-house .b3d-body.lg { width: 64px; height: 40px; }
+.cb3d-tower { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.cb3d-tower .b3d-t1.lg { width: 56px; height: 22px; }
+.cb3d-tower .b3d-t2.lg { width: 44px; height: 22px; }
+.cb3d-tower .b3d-t3.lg { width: 32px; height: 22px; }
+.cb3d-landmark .b3d-spire.lg { width: 10px; height: 36px; }
+.cb3d-landmark .b3d-lbase.lg { width: 72px; height: 48px; }
+.cb3d-name { font-size: 1.1rem; font-weight: 800; color: #fbbf24; margin-top: 0.5rem; text-shadow: 0 2px 8px rgba(0,0,0,.5); }
+
+/* 機會卡中央動畫 */
+.mp-chance-card {
+  background: linear-gradient(145deg, #fef3c7, #fde68a);
+  color: #78350f; border-radius: 14px; padding: 1.25rem 1.5rem;
+  text-align: center; min-width: 180px; box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  border: 3px solid #b45309;
+}
+.mp-chance-card span { font-size: 2.5rem; display: block; margin-bottom: 0.5rem; }
+.mp-chance-card p { font-weight: 700; font-size: 0.95rem; margin: 0; line-height: 1.4; }
+
+/* 過路費中央動畫 */
+.mp-rent-flash {
+  background: linear-gradient(145deg, #450a0a, #7f1d1d);
+  color: #fecaca; border-radius: 14px; padding: 1.25rem 1.75rem;
+  text-align: center; border: 2px solid #ef4444;
+  box-shadow: 0 8px 24px rgba(239,68,68,.35);
+}
+.mp-rent-flash span { font-size: 2.5rem; display: block; margin-bottom: 0.35rem; }
+.mp-rent-flash p { font-weight: 800; font-size: 1.1rem; margin: 0; line-height: 1.35; }
+
+/* 玩家加成標籤 */
+.mp-bonus-tag { display: block; font-size: 0.65rem; color: #94a3b8; margin-top: 2px; }
+.mp-rent-hint { text-align: center; color: #fbbf24; font-size: 0.78rem; margin: -0.25rem 0 0.25rem; }
 
 @media (max-width: 1100px) {
   .mp-game-wrap { grid-template-columns: 1fr; }

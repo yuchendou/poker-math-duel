@@ -43,20 +43,31 @@ let sudokuWrongCells = new Set();
 window.mahjongIsHost = false;
 let selectedMonopolyAvatar = '🍜';
 
+function updateFoodBonusHint(emoji) {
+  const hint = $('foodBonusHint');
+  if (!hint || !window.FOOD_AVATARS) return;
+  const f = window.FOOD_AVATARS.find((a) => a.emoji === emoji);
+  hint.textContent = f ? `${f.emoji} ${f.name}：${f.bonus}` : '';
+}
+
 function initFoodAvatars() {
   const grid = $('foodAvatarGrid');
   if (!grid || !window.FOOD_AVATARS) return;
   grid.innerHTML = window.FOOD_AVATARS.map((f, i) =>
-    `<button type="button" class="food-avatar-btn ${i === 1 ? 'selected' : ''}" data-emoji="${f.emoji}" title="${f.name}">${f.emoji}<span>${f.name}</span></button>`,
+    `<button type="button" class="food-avatar-btn ${i === 1 ? 'selected' : ''}" data-emoji="${f.emoji}" title="${f.bonus}">
+      ${f.emoji}<span class="food-name">${f.name}</span><span class="food-bonus">${f.bonus}</span>
+    </button>`,
   ).join('');
   grid.querySelectorAll('.food-avatar-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       grid.querySelectorAll('.food-avatar-btn').forEach((b) => b.classList.remove('selected'));
       btn.classList.add('selected');
       selectedMonopolyAvatar = btn.dataset.emoji;
+      updateFoodBonusHint(selectedMonopolyAvatar);
     });
   });
   selectedMonopolyAvatar = '🍜';
+  updateFoodBonusHint(selectedMonopolyAvatar);
 }
 
 function showPanel(panel) {
