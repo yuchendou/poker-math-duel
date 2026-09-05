@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>雙人遊戲坊</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div class="bg-pattern"></div>
+
+  <main class="app">
+    <header class="header">
+      <h1 id="mainTitle">🎮 雙人遊戲坊</h1>
+      <p id="mainSubtitle" class="subtitle">選一個遊戲，跟朋友連線對戰！</p>
+    </header>
+
+    <div id="setupBanner" class="setup-banner hidden">
+      ⚠️ GitHub Pages 只有遊戲畫面，還需要 Render 後端。<br />
+      請先到 <a href="https://render.com" target="_blank" rel="noopener">render.com</a> 部署後端，再把網址填進 <code>docs/config.js</code> 的 <code>SERVER_URL</code>。
+    </div>
+
+    <div id="serverStatus" class="server-status hidden"></div>
+    <p id="pageError" class="page-error hidden"></p>
+
+    <!-- 遊戲選擇 -->
+    <section id="gameSelect" class="panel">
+      <h2 class="section-title">選擇遊戲</h2>
+      <div class="game-cards">
+        <button type="button" class="game-card" data-game="poker">
+          <span class="game-card-icon">🃏</span>
+          <span class="game-card-name">撲克數學</span>
+          <span class="game-card-desc">四張牌加減乘除，湊出目標整數</span>
+        </button>
+        <button type="button" class="game-card" data-game="sudoku">
+          <span class="game-card-icon">🔢</span>
+          <span class="game-card-name">雙人數獨</span>
+          <span class="game-card-desc">同一題數獨，比誰先填完</span>
+        </button>
+        <button type="button" class="game-card" data-game="bulls">
+          <span class="game-card-icon">🎯</span>
+          <span class="game-card-name">幾A幾B</span>
+          <span class="game-card-desc">各自出題，輪流猜對手的數字</span>
+        </button>
+        <button type="button" class="game-card" data-game="mahjong">
+          <span class="game-card-icon">🀄</span>
+          <span class="game-card-name">台灣麻將</span>
+          <span class="game-card-desc">吃碰槓胡、搶槓、完整台數</span>
+        </button>
+        <button type="button" class="game-card" data-game="monopoly">
+          <span class="game-card-icon">🎲</span>
+          <span class="game-card-name">大富翁</span>
+          <span class="game-card-desc">擲骰買地、收租，台灣地標棋盤</span>
+        </button>
+        <button type="button" class="game-card" data-game="blockblast">
+          <span class="game-card-icon">🧩</span>
+          <span class="game-card-name">Block Blast 解題</span>
+          <span class="game-card-desc">設定棋盤與方塊形狀，找放置解法</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- 大廳 -->
+    <section id="lobby" class="panel hidden">
+      <div class="selected-game-badge" id="selectedGameBadge">撲克數學</div>
+      <button id="btnBackToSelect" class="btn btn-text">← 換遊戲</button>
+      <div class="form-group">
+        <label for="playerName">你的暱稱</label>
+        <input id="playerName" type="text" placeholder="輸入暱稱" maxlength="12" value="玩家" />
+      </div>
+      <div class="lobby-actions">
+        <button id="btnCreate" class="btn btn-primary">建立房間</button>
+        <div class="join-row">
+          <input id="roomCode" type="text" placeholder="房間代碼" maxlength="4" class="code-input" />
+          <button id="btnJoin" class="btn btn-secondary">加入房間</button>
+        </div>
+      </div>
+      <p id="lobbyError" class="error hidden"></p>
+      <div class="how-to">
+        <h3>怎麼跟朋友玩？</h3>
+        <ol>
+          <li>兩人選<strong>同一個遊戲</strong>，開同一個網址</li>
+          <li>玩家 A 建立房間，把房間代碼傳給 B</li>
+          <li>玩家 B 加入房間，顯示「兩位玩家已連線」</li>
+          <li>房主按開始，搶答！</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- 等待室 -->
+    <section id="waiting" class="panel hidden">
+      <div class="room-info">
+        <span class="label">房間</span>
+        <span id="displayGameLabel" class="game-label">撲克數學</span>
+        <span id="displayCode" class="room-code">----</span>
+        <button id="btnCopy" class="btn btn-small">複製代碼</button>
+      </div>
+
+      <div class="connection-status">
+        <div class="status-card" id="slot1">
+          <div class="avatar">1</div>
+          <span class="player-name">等待中...</span>
+          <span class="status-dot offline"></span>
+        </div>
+        <div class="vs">VS</div>
+        <div class="status-card" id="slot2">
+          <div class="avatar">2</div>
+          <span class="player-name">等待中...</span>
+          <span class="status-dot offline"></span>
+        </div>
+      </div>
+
+      <p id="connectionMessage" class="connection-message">等待另一位玩家加入...</p>
+      <button id="btnStart" class="btn btn-primary hidden" disabled>開始遊戲</button>
+      <p id="hostHint" class="hint hidden">你是房主，等對手連線後可以開始</p>
+    </section>
+
+    <!-- 撲克數學 -->
+    <section id="pokerGame" class="panel hidden">
+      <div class="target-bar">
+        <div class="target-display">
+          目標數字：<strong id="targetNumber">?</strong>
+        </div>
+        <p class="target-hint">只用 1～10 的牌 · 答案保證是整數</p>
+      </div>
+      <div class="cards-row" id="cardsRow"></div>
+      <div class="answer-area">
+        <p class="hint">用四張牌的數字各一次（例如 <code>(8-2)*(4-1)</code>）</p>
+        <div class="answer-row">
+          <input id="expression" type="text" placeholder="輸入你的算式..." />
+          <button id="btnPokerSubmit" class="btn btn-primary">送出答案</button>
+        </div>
+        <p id="pokerFeedback" class="feedback hidden"></p>
+      </div>
+      <div id="pokerRoundResult" class="round-result hidden"></div>
+      <button id="btnPokerNext" class="btn btn-secondary hidden">下一題（房主）</button>
+    </section>
+
+    <!-- 雙人數獨 -->
+    <section id="sudokuGame" class="panel hidden">
+      <p class="sudoku-hint">同一題數獨，先填完正確的人贏！可按「檢查哪裡錯」標出錯誤格子。</p>
+      <div id="sudokuBoard" class="sudoku-board"></div>
+      <div id="sudokuNumpad" class="sudoku-numpad"></div>
+      <p id="sudokuFeedback" class="feedback hidden"></p>
+      <div class="sudoku-actions">
+        <button id="btnSudokuCheck" type="button" class="btn btn-secondary">檢查哪裡錯</button>
+        <button id="btnSudokuSubmit" type="button" class="btn btn-primary">我填完了！</button>
+      </div>
+      <div id="sudokuRoundResult" class="round-result hidden"></div>
+      <button id="btnSudokuNext" class="btn btn-secondary hidden">下一題（房主）</button>
+    </section>
+
+    <!-- 幾A幾B -->
+    <section id="bullsGame" class="panel hidden">
+      <div class="bulls-rules">
+        <p>兩人各想一組 <strong>4 位不重複數字</strong>（1～9 開頭，可用 0～9）出給對手猜，對手看不到你的答案。</p>
+        <p><strong>A</strong> = 數字對且位置對　<strong>B</strong> = 數字對但位置錯</p>
+        <p>例如對手題目是 <code>1234</code>，你猜 <code>1567</code> → <strong>1A0B</strong>，然後換對手猜你的題。</p>
+      </div>
+
+      <div id="bullsSetup" class="bulls-setup">
+        <p id="bullsSetupStatus" class="bulls-turn-status">請輸入你要出的題目</p>
+        <div class="answer-row">
+          <input id="bullsSecret" type="password" placeholder="4 位數字，第一位 1～9" maxlength="4" inputmode="numeric" autocomplete="off" />
+          <button id="btnBullsSecret" type="button" class="btn btn-primary">出題</button>
+        </div>
+      </div>
+
+      <p id="bullsFeedback" class="feedback hidden"></p>
+
+      <div id="bullsPlay" class="bulls-play hidden">
+        <p id="bullsTurnStatus" class="bulls-turn-status">等待開始...</p>
+        <div class="answer-row">
+          <input id="bullsGuess" type="text" placeholder="猜對手的數字，第一位 1～9" maxlength="4" inputmode="numeric" />
+          <button id="btnBullsSubmit" type="button" class="btn btn-primary">送出猜測</button>
+        </div>
+        <ul id="bullsHistory" class="bulls-history"></ul>
+      </div>
+
+      <div id="bullsRoundResult" class="round-result hidden"></div>
+      <button id="btnBullsNext" class="btn btn-secondary hidden">下一題（房主）</button>
+    </section>
+
+    <!-- 台灣麻將 -->
+    <section id="mahjongGame" class="panel hidden mj-panel">
+      <div class="mj-rules">
+        <p>台灣麻將 16 張：<strong>吃、碰、明槓、暗槓、加槓、胡牌、搶槓</strong>，2 人連線 + 2 電腦。</p>
+        <p>開局<strong>擲骰抓位</strong>，聽牌宣告 +1 台。籌碼台100／底50，東南西北一將。</p>
+      </div>
+      <div id="mjSeatDrawPanel" class="mj-seat-draw-panel hidden">
+        <h2 class="mj-seat-draw-title">🎲 擲骰抓位</h2>
+        <ol class="mj-seat-steps">
+          <li>四位玩家<strong>暫時入座</strong>（連線順序）</li>
+          <li>蓋起東、南、西、北方位牌並洗勻</li>
+          <li><strong>擲三顆骰子</strong>決定誰先抽牌</li>
+          <li>依序抽取方位牌，抽到<strong>東</strong>者為莊家</li>
+          <li>入座完成，開始打牌！</li>
+        </ol>
+        <div id="mjTempSeats" class="mj-temp-seats"></div>
+        <div id="mjDiceArea" class="mj-dice-area"></div>
+        <p id="mjDrawStatus" class="mj-draw-status"></p>
+        <div id="mjWindTiles" class="mj-wind-pick-row"></div>
+        <div id="mjSeatDrawResult" class="mj-seat-draw-result"></div>
+        <button id="btnMjRollDice" type="button" class="btn btn-primary hidden">🎲 擲三顆骰子</button>
+      </div>
+      <div id="mjGameMain" class="mj-game-main">
+      <div class="mj-info-bar">
+        <span>圈風：<strong id="mjRoundWind">東風圈</strong></span>
+        <span>莊家：<strong id="mjDealerWind">東</strong></span>
+        <span>第 <strong id="mjHandNo">0</strong> 局</span>
+        <span>籌碼：<strong id="mjChipRule">台100／底50</strong></span>
+      </div>
+      <div id="mjScoreBar" class="mj-score-bar"></div>
+      <p id="mjTurnStatus" class="mj-turn-status">等待開始...</p>
+      <div class="mj-table-room">
+        <div class="mj-felt">
+          <div class="mj-center-area">
+            <span class="mj-wall-pill">牌牆 <strong id="mjWallCount">0</strong> 張</span>
+            <div id="mjDiscardPool" class="mj-discard-pool">
+              <span class="mj-pool-label">河牌</span>
+              <div id="mjDiscardTiles" class="mj-pool-tiles"></div>
+            </div>
+          </div>
+          <div id="mjTable" class="mj-board"></div>
+          <div id="mjDiscardFly" class="mj-discard-fly hidden" aria-live="polite"></div>
+        </div>
+      </div>
+      <div class="mj-player-zone">
+        <div id="mjMyTable" class="mj-my-table"></div>
+        <div id="mjTingBar" class="mj-ting-bar hidden">
+          <div class="mj-ting-bar-text">
+            <strong id="mjTingHint">可以聽牌了！</strong>
+            <span id="mjTingWaits" class="mj-ting-waits"></span>
+          </div>
+          <button id="btnMahjongTing" type="button" class="btn btn-primary mj-ting-btn">🔔 宣告聽牌（+1 台）</button>
+        </div>
+        <div id="mjLastDraw" class="mj-last-draw hidden"></div>
+        <div id="mjHand" class="mj-hand-rack"></div>
+      </div>
+      <p id="mjFeedback" class="feedback hidden"></p>
+      <div class="mj-actions mj-claim-actions">
+        <button id="btnMahjongRon" type="button" class="btn btn-primary hidden">胡！</button>
+        <button id="btnMahjongPon" type="button" class="btn btn-secondary hidden">碰</button>
+        <button id="btnMahjongMinkong" type="button" class="btn btn-secondary hidden">明槓</button>
+        <div id="mjChiOptions" class="mj-chi-options hidden"></div>
+        <button id="btnMahjongQiang" type="button" class="btn btn-primary hidden">搶槓胡！</button>
+        <button id="btnMahjongPass" type="button" class="btn btn-text hidden">跳過</button>
+      </div>
+      <div class="mj-actions">
+        <button id="btnMahjongHu" type="button" class="btn btn-primary hidden">胡牌（自摸）</button>
+        <button id="btnMahjongAnkong" type="button" class="btn btn-secondary hidden">暗槓</button>
+        <button id="btnMahjongJiagang" type="button" class="btn btn-secondary hidden">加槓</button>
+        <button id="btnMahjongDiscard" type="button" class="btn btn-secondary">打出選取的牌</button>
+      </div>
+      <div id="mjRoundResult" class="round-result hidden"></div>
+      <div id="mjWinOverlay" class="mj-win-overlay hidden" role="dialog" aria-modal="true">
+        <div class="mj-win-modal">
+          <div id="mjWinOverlayBody" class="mj-win-modal-body"></div>
+          <div id="mjWinOverlayActions" class="mj-win-modal-actions">
+            <button id="btnMjWinDismiss" type="button" class="btn btn-secondary">先看一下牌型</button>
+          </div>
+        </div>
+      </div>
+      <div id="mjHandEndActionsHost" class="mj-hand-end-actions">
+        <button id="btnMahjongNext" type="button" class="btn btn-primary hidden">下一局（房主）</button>
+        <button id="btnMahjongSettle" type="button" class="btn btn-secondary hidden">不玩了，結算</button>
+      </div>
+      <div id="mjSettlement" class="mj-settlement hidden"></div>
+      </div>
+    </section>
+
+    <!-- 大富翁 -->
+    <section id="monopolyGame" class="panel hidden mp-panel">
+      <div class="mp-layout">
+        <div id="mpBoard" class="mp-board-wrap"></div>
+        <aside class="mp-sidebar">
+          <div id="mpPlayers" class="mp-players"></div>
+          <div id="mpDice" class="mp-dice hidden"></div>
+          <p id="mpMessage" class="mp-message"></p>
+          <div id="mpActions" class="mp-action-area"></div>
+          <p id="mpFeedback" class="feedback hidden"></p>
+        </aside>
+      </div>
+    </section>
+
+    <!-- Block Blast 解題 -->
+    <section id="blockblastGame" class="panel hidden bb-panel">
+      <button id="btnBackFromBlockblast" class="btn btn-text">← 換遊戲</button>
+      <h2 class="bb-title">🧩 Block Blast 解題</h2>
+      <p class="bb-intro">點格子切換顏色。深色 = 已有方塊，淺色 = 空格。<strong>下方三個圖形不能旋轉或翻轉</strong>，請照遊戲裡看到的方向畫好再求解。</p>
+
+      <div class="bb-layout">
+        <div class="bb-section">
+          <h3 class="bb-section-title">目前棋盤 8×8</h3>
+          <div id="bbBoard" class="bb-board"></div>
+          <div class="bb-board-actions">
+            <button id="btnBbClearBoard" class="btn btn-small">清空棋盤</button>
+            <button id="btnBbFillBoard" class="btn btn-small">全部填滿</button>
+          </div>
+        </div>
+
+        <div class="bb-section">
+          <h3 class="bb-section-title">三個待放圖形（固定方向，不可旋轉）</h3>
+          <div class="bb-pieces-row">
+            <div class="bb-piece-wrap" data-piece="0">
+              <span class="bb-piece-label" style="color:#5b9bd5">圖形 1</span>
+              <div id="bbPiece0" class="bb-piece-grid"></div>
+              <div class="bb-piece-presets">
+                <button type="button" class="bb-preset" data-piece="0" data-shape="dot">·</button>
+                <button type="button" class="bb-preset" data-piece="0" data-shape="line3">三</button>
+                <button type="button" class="bb-preset" data-piece="0" data-shape="line4">四</button>
+                <button type="button" class="bb-preset" data-piece="0" data-shape="square2">田</button>
+                <button type="button" class="bb-preset" data-piece="0" data-shape="L">L</button>
+                <button type="button" class="bb-clear-piece btn btn-small" data-piece="0">清除</button>
+              </div>
+            </div>
+            <div class="bb-piece-wrap" data-piece="1">
+              <span class="bb-piece-label" style="color:#3ecf8e">圖形 2</span>
+              <div id="bbPiece1" class="bb-piece-grid"></div>
+              <div class="bb-piece-presets">
+                <button type="button" class="bb-preset" data-piece="1" data-shape="dot">·</button>
+                <button type="button" class="bb-preset" data-piece="1" data-shape="line3">三</button>
+                <button type="button" class="bb-preset" data-piece="1" data-shape="line5">五</button>
+                <button type="button" class="bb-preset" data-piece="1" data-shape="square3">九</button>
+                <button type="button" class="bb-preset" data-piece="1" data-shape="T">T</button>
+                <button type="button" class="bb-clear-piece btn btn-small" data-piece="1">清除</button>
+              </div>
+            </div>
+            <div class="bb-piece-wrap" data-piece="2">
+              <span class="bb-piece-label" style="color:#f0b429">圖形 3</span>
+              <div id="bbPiece2" class="bb-piece-grid"></div>
+              <div class="bb-piece-presets">
+                <button type="button" class="bb-preset" data-piece="2" data-shape="line2">二</button>
+                <button type="button" class="bb-preset" data-piece="2" data-shape="line4">四</button>
+                <button type="button" class="bb-preset" data-piece="2" data-shape="square2">田</button>
+                <button type="button" class="bb-preset" data-piece="2" data-shape="L">L</button>
+                <button type="button" class="bb-preset" data-piece="2" data-shape="T">T</button>
+                <button type="button" class="bb-clear-piece btn btn-small" data-piece="2">清除</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button id="btnBbSolve" class="btn btn-primary bb-solve-btn">🔍 找清最多格的放法</button>
+      <p id="bbStatus" class="bb-status"></p>
+      <div id="bbSolutions" class="bb-solutions"></div>
+    </section>
+  </main>
+
+  <script src="./config.js?v=17"></script>
+  <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+  <script src="./blockblast.js?v=18"></script>
+  <script src="./mahjong.js?v=18"></script>
+  <script src="./monopoly.js?v=18"></script>
+  <script src="./app.js?v=18"></script>
+</body>
+</html>
