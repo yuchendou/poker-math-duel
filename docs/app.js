@@ -41,6 +41,23 @@ let bullsCurrentTurnId = null;
 let bullsSecretSubmitted = false;
 let sudokuWrongCells = new Set();
 window.mahjongIsHost = false;
+let selectedMonopolyAvatar = '🍜';
+
+function initFoodAvatars() {
+  const grid = $('foodAvatarGrid');
+  if (!grid || !window.FOOD_AVATARS) return;
+  grid.innerHTML = window.FOOD_AVATARS.map((f, i) =>
+    `<button type="button" class="food-avatar-btn ${i === 1 ? 'selected' : ''}" data-emoji="${f.emoji}" title="${f.name}">${f.emoji}<span>${f.name}</span></button>`,
+  ).join('');
+  grid.querySelectorAll('.food-avatar-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      grid.querySelectorAll('.food-avatar-btn').forEach((b) => b.classList.remove('selected'));
+      btn.classList.add('selected');
+      selectedMonopolyAvatar = btn.dataset.emoji;
+    });
+  });
+  selectedMonopolyAvatar = '🍜';
+}
 
 function showPanel(panel) {
   if (!panel) return;
@@ -124,6 +141,9 @@ function selectGame(gameType) {
   }
   $('selectedGameBadge').textContent = info.label;
   $('mainSubtitle').textContent = `正在玩：${info.label}`;
+  const avatarPick = $('monopolyAvatarPick');
+  if (avatarPick) avatarPick.classList.toggle('hidden', gameType !== 'monopoly');
+  if (gameType === 'monopoly') initFoodAvatars();
   document.querySelectorAll('.game-card').forEach((card) => {
     card.classList.toggle('selected', card.dataset.game === gameType);
   });
@@ -181,6 +201,7 @@ function bindAllUi() {
     socket.emit('room:create', {
       name: $('playerName').value.trim() || '玩家',
       gameType: selectedGame,
+      avatar: selectedGame === 'monopoly' ? selectedMonopolyAvatar : undefined,
     });
   });
 
@@ -195,6 +216,7 @@ function bindAllUi() {
       name: $('playerName').value.trim() || '玩家',
       code,
       gameType: selectedGame,
+      avatar: selectedGame === 'monopoly' ? selectedMonopolyAvatar : undefined,
     });
   });
 

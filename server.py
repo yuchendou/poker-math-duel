@@ -322,6 +322,7 @@ def on_create(data):
     sid = request.sid
     name = (data.get("name") or "玩家").strip()[:12] or "玩家"
     game_type = data.get("gameType", "poker")
+    avatar = (data.get("avatar") or "🍜").strip()[:4]
     if game_type not in GAME_TYPES:
         emit("error", {"message": "不支援的遊戲類型"})
         return
@@ -329,7 +330,7 @@ def on_create(data):
     room = {
         "code": code,
         "gameType": game_type,
-        "players": [{"id": sid, "name": name, "isHost": True}],
+        "players": [{"id": sid, "name": name, "isHost": True, "avatar": avatar}],
         "gameState": "waiting",
         "round": None,
     }
@@ -347,6 +348,7 @@ def on_join(data):
     code = (data.get("code") or "").strip().upper()
     name = (data.get("name") or "玩家").strip()[:12] or "玩家"
     game_type = data.get("gameType", "poker")
+    avatar = (data.get("avatar") or "🍜").strip()[:4]
     room = rooms.get(code)
 
     if not room:
@@ -360,7 +362,7 @@ def on_join(data):
         emit("error", {"message": f"房間已滿（最多 {max_h} 人）"})
         return
 
-    room["players"].append({"id": sid, "name": name, "isHost": False})
+    room["players"].append({"id": sid, "name": name, "isHost": False, "avatar": avatar})
     sid_to_room[sid] = code
     join_room(code)
     emit("room:joined", {"code": code, "gameType": room["gameType"]})
@@ -1042,8 +1044,9 @@ def _emit_monopoly(room, code):
 def start_monopoly_round(room, code):
     names = [p["name"] for p in room["players"]]
     sids = [p["id"] for p in room["players"]]
+    avatars = [p.get("avatar", "🍜") for p in room["players"]]
     room["gameState"] = "playing"
-    room["round"] = mp.create_initial_state(names, sids)
+    room["round"] = mp.create_initial_state(names, sids, avatars)
     _emit_monopoly(room, code)
 
 
@@ -1133,6 +1136,28 @@ def on_monopoly_chance():
     if not room:
         return
     _monopoly_apply(room, code, sid, mp.apply_chance_card)
+
+
+@socketio.on("game:monopoly-upgrade")
+def on_monopoly_upgrade():
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room:
+        return
+    _monopoly_apply(room, code, sid, mp.upgrade_property)
+
+
+@socketio.on("game:monopoly-takeover")
+def on_monopoly_takeover():
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room:
+        return
+    _monopoly_apply(room, code, sid, mp.takeover_property)
 
 
 @socketio.on("game:monopoly-jail-bail")

@@ -71,6 +71,10 @@
         <label for="playerName">你的暱稱</label>
         <input id="playerName" type="text" placeholder="輸入暱稱" maxlength="12" value="玩家" />
       </div>
+      <div id="monopolyAvatarPick" class="mp-avatar-pick hidden">
+        <label>選擇你的食物角色</label>
+        <div id="foodAvatarGrid" class="food-avatar-grid"></div>
+      </div>
       <div class="lobby-actions">
         <button id="btnCreate" class="btn btn-primary">建立房間</button>
         <div class="join-row">
@@ -274,11 +278,10 @@
 
     <!-- 大富翁 -->
     <section id="monopolyGame" class="panel hidden mp-panel">
-      <div class="mp-layout">
+      <div class="mp-game-wrap">
         <div id="mpBoard" class="mp-board-wrap"></div>
         <aside class="mp-sidebar">
           <div id="mpPlayers" class="mp-players"></div>
-          <div id="mpDice" class="mp-dice hidden"></div>
           <p id="mpMessage" class="mp-message"></p>
           <div id="mpActions" class="mp-action-area"></div>
           <p id="mpFeedback" class="feedback hidden"></p>
@@ -353,9 +356,9 @@
 
   <script src="./config.js?v=17"></script>
   <script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
-  <script src="./blockblast.js?v=18"></script>
-  <script src="./mahjong.js?v=18"></script>
-  <script src="./monopoly.js?v=18"></script>
-  <script src="./app.js?v=18"></script>
+  <script src="./blockblast.js?v=19"></script>
+  <script src="./mahjong.js?v=19"></script>
+  <script src="./monopoly.js?v=19"></script>
+  <script src="./app.js?v=19"></script>
 </body>
 </html>
