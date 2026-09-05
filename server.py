@@ -1065,10 +1065,15 @@ def _monopoly_apply(room, code, sid, fn):
     rnd = room.get("round")
     if not rnd:
         return False
-    if mp.player_index_for_sid(rnd, sid) != rnd["currentPlayerIndex"]:
+    idx = mp.player_index_for_sid(rnd, sid)
+    if idx is None:
+        emit("game:monopoly-error", {"message": "連線異常，請重新加入房間"})
+        return False
+    if idx != rnd["currentPlayerIndex"]:
         emit("game:monopoly-error", {"message": "還沒輪到你"})
         return False
-    room["round"] = fn(rnd)
+    new_state = fn(rnd)
+    room["round"] = new_state
     _emit_monopoly(room, code)
     return True
 

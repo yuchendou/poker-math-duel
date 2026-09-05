@@ -318,7 +318,8 @@ def _handle_landing(state: dict) -> dict:
     st, pid = space["type"], space["id"]
 
     if st == "start":
-        return _end_turn(state, f"經過起點 +${state.get('centerAnim', {}).get('passBonus', state['passStartBonus'])}")
+        bonus = (state.get("centerAnim") or {}).get("passBonus", state["passStartBonus"])
+        return _end_turn(state, f"經過起點 +${bonus}")
     if st == "chance":
         return _set_pending(state, {"kind": "chance", "message": "抽到機會卡！翻開看看"})
     if st == "tax":
@@ -401,6 +402,9 @@ def _handle_landing(state: dict) -> dict:
 
 def roll_dice(state: dict) -> dict:
     state = _clone(state)
+    # 若上次移動未完成，直接結算落點避免卡在 moving
+    if state["phase"] == "moving":
+        return _handle_landing(state)
     if state["phase"] != "rolling":
         return state
     cur = state["players"][state["currentPlayerIndex"]]
@@ -419,7 +423,10 @@ def roll_dice(state: dict) -> dict:
     state["diceRolling"] = False
     state["message"] = f"擲出 {d1}+{d2}={total}"
     state["centerAnim"] = {"type": "dice", "values": [d1, d2]}
-    return _handle_landing(state)
+    state = _handle_landing(state)
+    if state["phase"] == "moving":
+        state["phase"] = "rolling"
+    return state
 
 
 def _apply_build(state: dict, pid: int, cost: int, level: int, seller: int | None = None) -> bool:
@@ -497,6 +504,8 @@ def skip_action(state: dict) -> dict:
             return state
         cur["inJail"] = False
         return _end_turn(state, f"{cur['avatar']} {cur['name']} 出監！")
+    if state["phase"] in ("action", "moving"):
+        return _end_turn(state, "結束回合")
     return _end_turn(state, "放棄")
 
 
@@ -818,7 +827,7 @@ def apply_chance_card(state: dict) -> dict:
     old_pos = state["players"][idx]["position"]
     state = fn(state)
     state["pendingAction"] = None
-    if state.get("centerAnim", {}).get("type") != "build":
+    if (state.get("centerAnim") or {}).get("type") != "build":
         _set_anim(state, {"type": "chance", "text": state.get("lastChanceCard", msg)})
     new_pos = state["players"][idx]["position"]
     if new_pos != old_pos:
@@ -827,10 +836,12 @@ def apply_chance_card(state: dict) -> dict:
 
 
 def build_client_view(state: dict, sid: str) -> dict:
-    my_index = next((i for i, p in enumerate(state["players"]) if p.get("sid") == sid), 0)
+    my_index = player_index_for_sid(state, sid)
+    if my_index is None:
+        my_index = -1
     return {
-        "state": state, "myIndex": my_index,
-        "isMyTurn": state["currentPlayerIndex"] == my_index and state["phase"] != "gameover",
+        "state": state, "myIndex": max(my_index, 0),
+        "isMyTurn": my_index >= 0 and state["currentPlayerIndex"] == my_index and state["phase"] != "gameover",
         "colorMap": COLOR_MAP, "foodAvatars": FOOD_AVATARS,
     }
 

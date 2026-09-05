@@ -6,6 +6,7 @@ let mpMoveGen = 0;
 let mpPositionsInit = false;
 let mpCachedDice = null;
 let mpGameId = null;
+let mpUpdateChain = Promise.resolve();
 
 const MP_COLORS = {
   brown: '#92400e', lightblue: '#38bdf8', pink: '#ec4899', orange: '#f97316',
@@ -361,6 +362,10 @@ function renderActions(view) {
       } else if (act.kind === 'chance') {
         html += `<button class="btn btn-primary" id="mpBtnChance">🃏 翻開機會卡</button>`;
       }
+      html += `<button type="button" class="btn btn-secondary" id="mpBtnEndTurn">✅ 結束回合</button>`;
+    } else if (state.phase === 'action' || state.phase === 'moving') {
+      html += `<p class="mp-pending">請處理落點事件，或結束回合</p>`;
+      html += `<button type="button" class="btn btn-secondary" id="mpBtnEndTurn">✅ 結束回合</button>`;
     }
     }
   }
@@ -370,6 +375,7 @@ function renderActions(view) {
     setTimeout(() => mpSocket.emit('game:monopoly-roll'), 400);
   });
   mp$('mpBtnSkipJail')?.addEventListener('click', () => mpSocket.emit('game:monopoly-skip'));
+  mp$('mpBtnEndTurn')?.addEventListener('click', () => mpSocket.emit('game:monopoly-skip'));
   mp$('mpBtnBankFee')?.addEventListener('click', () => mpSocket.emit('game:monopoly-bank-fee'));
   mp$('mpBtnSellBank')?.addEventListener('click', () => mpSocket.emit('game:monopoly-sell-bank'));
   mp$('mpBtnBankrupt')?.addEventListener('click', () => mpSocket.emit('game:monopoly-bankrupt'));
@@ -423,6 +429,12 @@ async function handleUpdate(view) {
     return;
   }
 
+  // 先更新按鈕，避免動畫期間無法操作而卡住
+  renderDiceHero(state, view.myIndex);
+  renderDiceBar(state);
+  renderPlayers(state, view.myIndex);
+  renderActions(view);
+
   const movers = [];
   state.players.forEach((p, i) => {
     if (p.bankrupt) return;
@@ -440,11 +452,6 @@ async function handleUpdate(view) {
   }
 
   state.players.forEach((p, i) => { if (!p.bankrupt) mpLastPositions[i] = p.position; });
-
-  renderDiceHero(state, view.myIndex);
-  renderDiceBar(state);
-  renderPlayers(state, view.myIndex);
-  renderActions(view);
 
   const dice = getActiveDice(state);
   const centerType = anim?.type;
@@ -474,7 +481,7 @@ window.bindMonopoly = function (socket, panels, showPanel) {
   mpSocket = socket; mpPanels = panels; mpShowPanel = showPanel;
   socket.on('game:monopoly-update', (view) => {
     window.mpIsHost = view.isHost;
-    handleUpdate(view);
+    mpUpdateChain = mpUpdateChain.then(() => handleUpdate(view)).catch(() => {});
   });
   socket.on('game:monopoly-error', ({ message }) => {
     const fb = mp$('mpFeedback');
