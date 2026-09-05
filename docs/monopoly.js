@@ -13,15 +13,14 @@ const PLAYER_TINTS = ['#f87171', '#60a5fa', '#4ade80', '#c084fc'];
 
 function mp$(id) { return document.getElementById(id); }
 
-/** 右下角出發，逆時針環繞（0=右下 → 1-9右側上行 → 10-20上排左行 …） */
-function boardLayout(board) {
-  const byId = Object.fromEntries(board.map((s) => [s.id, s]));
-  const pick = (ids) => ids.map((i) => byId[i]);
+/** 右下出發，逆時針：pos 0→1→2… 對應 board 陣列索引 */
+function boardRing(board) {
+  const cell = (pos) => ({ space: board[pos], pos });
   return {
-    bottom: pick([30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 0]),
-    right: pick([1, 2, 3, 4, 5, 6, 7, 8, 9]),
-    top: pick([20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10]),
-    left: pick([21, 22, 23, 24, 25, 26, 27, 28, 29]),
+    bottom: [10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].map(cell),
+    left: [11, 12, 13, 14, 15, 16, 17, 18, 19].map(cell),
+    top: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map(cell),
+    right: [31, 32, 33, 34, 35, 36, 37, 38, 39].map(cell),
   };
 }
 
@@ -60,26 +59,27 @@ function centerBuilding3D(space, level, ownerId, players) {
   return `<div class="cb3d iso-build lv${level} anim-pop" style="--bc:${color};--owner:${tint}">${badge}${roof}${spire}<div class="iso-scene lg">${blocks}</div>${tag}</div>`;
 }
 
-function renderCell(space, players, propStates, hideTokenFor) {
+function renderCell(cell, players, propStates, hideTokenFor, gridRow, gridCol) {
+  const { space, pos } = cell;
   const ps = propStates[String(space.id)];
   const lv = ps?.level || 0;
   const ownerId = ps?.ownerId;
   const isProp = space.type === 'property';
-  const isStart = space.id === 0;
+  const isStart = pos === 0;
   const bar = isProp ? `<div class="mp-bar" style="background:${MP_COLORS[space.color] || '#666'}"></div>` : '';
   const build = isProp && lv ? building3D(space, lv, ownerId, players) : '';
   const price = isProp ? `<span class="mp-price">$${space.price.toLocaleString()}</span>` : '';
   const taxHint = space.type === 'tax' ? `<span class="mp-tax-hint">${space.taxKind === 'luxury' ? '💎' : '🏛️'}</span>` : '';
-  const tokens = players.filter((p) => !p.bankrupt && p.position === space.id && p.id !== hideTokenFor)
+  const tokens = players.filter((p) => !p.bankrupt && p.position === pos && p.id !== hideTokenFor)
     .map((p) => `<span class="mp-token" data-pid="${p.id}" style="--pt:${ownerTint(p.id)}">${p.avatar || '🙂'}</span>`).join('');
-  const ownerAttr = ownerId != null ? ` style="--owner:${ownerTint(ownerId)}"` : '';
-  return `<div class="mp-cell ${space.type}${isStart ? ' mp-start' : ''}${ownerId != null ? ` owned-by-p${ownerId}` : ''}" data-space-id="${space.id}"${ownerAttr}>
+  const ownerAttr = ownerId != null ? ` style="--owner:${ownerTint(ownerId)};grid-row:${gridRow};grid-column:${gridCol}"` : ` style="grid-row:${gridRow};grid-column:${gridCol}"`;
+  return `<div class="mp-cell ${space.type}${isStart ? ' mp-start' : ''}${ownerId != null ? ` owned-by-p${ownerId}` : ''}" data-space-id="${pos}"${ownerAttr}>
     ${bar}<div class="mp-cell-body"><span class="mp-name">${space.name}</span>${build}${price}${taxHint}
     <div class="mp-tokens">${tokens}</div></div></div>`;
 }
 
 function renderBoard(state, skipCenter, hideTokenFor) {
-  const { bottom, right, top, left } = boardLayout(state.board);
+  const ring = boardRing(state.board);
   const ps = state.propertyStates || {};
   const p = state.players;
   const centerContent = skipCenter && mp$('mpCenterStage') ? mp$('mpCenterStage').innerHTML : `
@@ -87,16 +87,25 @@ function renderBoard(state, skipCenter, hideTokenFor) {
     <div id="mpCenterStage" class="mp-center-stage"></div>
     <p id="mpCenterMsg" class="mp-center-msg"></p>`;
 
-  mp$('mpBoard').innerHTML = `
-    <div class="mp-grid">
-      <div class="mp-side mp-top">${top.map((s) => renderCell(s, p, ps, hideTokenFor)).join('')}</div>
-      <div class="mp-middle-row">
-        <div class="mp-side mp-left">${left.map((s) => renderCell(s, p, ps, hideTokenFor)).join('')}</div>
-        <div class="mp-center">${centerContent}</div>
-        <div class="mp-side mp-right">${right.map((s) => renderCell(s, p, ps, hideTokenFor)).join('')}</div>
-      </div>
-      <div class="mp-side mp-bottom">${bottom.map((s) => renderCell(s, p, ps, hideTokenFor)).join('')}</div>
-    </div>`;
+  const grid = Array.from({ length: 11 }, () => Array(11).fill(null));
+  ring.top.forEach((c, i) => { grid[0][i] = c; });
+  ring.bottom.forEach((c, i) => { grid[10][i] = c; });
+  ring.left.forEach((c, i) => { grid[i + 1][0] = c; });
+  ring.right.forEach((c, i) => { grid[i + 1][10] = c; });
+
+  let html = '<div class="mp-grid">';
+  for (let r = 0; r < 11; r++) {
+    for (let c = 0; c < 11; c++) {
+      if (r >= 1 && r <= 9 && c >= 1 && c <= 9) {
+        if (r === 1 && c === 1) html += `<div class="mp-center">${centerContent}</div>`;
+        continue;
+      }
+      const cell = grid[r][c];
+      if (cell) html += renderCell(cell, p, ps, hideTokenFor, r + 1, c + 1);
+    }
+  }
+  html += '</div>';
+  mp$('mpBoard').innerHTML = html;
 }
 
 function buildMovePath(from, to) {

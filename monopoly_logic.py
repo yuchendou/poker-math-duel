@@ -8,7 +8,6 @@ from typing import Any, Callable
 BOARD_SIZE = 40
 START_BONUS = 3000
 START_MONEY = 25000
-JAIL_POSITION = 10
 TAKEOVER_MULT = 1.5
 COLOR_SET_BONUS = 1.5
 
@@ -31,7 +30,8 @@ FOOD_AVATARS = [
 
 CHAR_BONUS = {f["emoji"]: f for f in FOOD_AVATARS}
 
-BOARD: list[dict[str, Any]] = [
+# 原始地塊（id 不變，供 propertyStates 對應）
+_RAW_BOARD: list[dict[str, Any]] = [
     {"type": "start", "id": 0, "name": "出發"},
     {"type": "property", "id": 1, "name": "萬華", "price": 1200, "rent": 300, "color": "brown", "landmark": "龍山寺"},
     {"type": "chance", "id": 2, "name": "機會"},
@@ -73,6 +73,19 @@ BOARD: list[dict[str, Any]] = [
     {"type": "property", "id": 38, "name": "西門町", "price": 8500, "rent": 2400, "color": "darkblue", "landmark": "紅樓"},
     {"type": "property", "id": 39, "name": "象山", "price": 7200, "rent": 2050, "color": "darkblue", "landmark": "象山步道"},
 ]
+
+# 逆時針路徑：右下出發 → 底排向左 → 左側向上 → 頂排向右 → 右側向下
+_CCW_PATH = [
+    0, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30,
+    29, 28, 27, 26, 25, 24, 23, 22, 21, 20,
+    19, 18, 17, 16, 15, 14, 13, 12, 11, 10,
+    9, 8, 7, 6, 5, 4, 3, 2, 1,
+]
+_BY_ID = {s["id"]: s for s in _RAW_BOARD}
+BOARD: list[dict[str, Any]] = [copy.deepcopy(_BY_ID[i]) for i in _CCW_PATH]
+
+# 探監角（pos 30）；入獄格（pos 10）踩到後送來此處
+JAIL_POSITION = 30
 
 COLOR_MAP = {
     "brown": "#92400e", "lightblue": "#38bdf8", "pink": "#ec4899", "orange": "#f97316",
