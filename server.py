@@ -1127,6 +1127,22 @@ def on_monopoly_pay_tax():
     _monopoly_apply(room, code, sid, mp.pay_tax)
 
 
+@socketio.on("game:monopoly-tax-choice")
+def on_monopoly_tax_choice(data=None):
+    from flask import request
+    sid = request.sid
+    code = sid_to_room.get(sid)
+    room = rooms.get(code)
+    if not room:
+        return
+    choice = (data or {}).get("choice", "full")
+
+    def apply_choice(state):
+        return mp.choose_tax(state, choice)
+
+    _monopoly_apply(room, code, sid, apply_choice)
+
+
 @socketio.on("game:monopoly-chance")
 def on_monopoly_chance():
     from flask import request

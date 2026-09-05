@@ -1,29 +1,40 @@
-/** 台北新北大富翁 — v3 立體建築 + 動畫 */
+/** 台北新北大富翁 — v4 浮動棋子、逆時針棋盤、業主標記 */
 let mpSocket, mpPanels, mpShowPanel;
-let mpPrevPositions = {};
+let mpLastPositions = {};
 let mpAnimating = false;
+let mpMoveGen = 0;
+let mpPositionsInit = false;
 
 const MP_COLORS = {
   brown: '#92400e', lightblue: '#38bdf8', pink: '#ec4899', orange: '#f97316',
   red: '#dc2626', yellow: '#eab308', green: '#16a34a', darkblue: '#1d4ed8', premium: '#a855f7',
 };
+const PLAYER_TINTS = ['#f87171', '#60a5fa', '#4ade80', '#c084fc'];
 
 function mp$(id) { return document.getElementById(id); }
 
+/** 右下角出發，逆時針環繞（0=右下 → 1-9右側上行 → 10-20上排左行 …） */
 function boardLayout(board) {
   const byId = Object.fromEntries(board.map((s) => [s.id, s]));
+  const pick = (ids) => ids.map((i) => byId[i]);
   return {
-    bottom: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => byId[i]),
-    right: [11, 12, 13, 14, 15, 16, 17, 18, 19].map((i) => byId[i]),
-    top: [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30].map((i) => byId[i]).reverse(),
-    left: [31, 32, 33, 34, 35, 36, 37, 38, 39].map((i) => byId[i]).reverse(),
+    bottom: pick([30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 0]),
+    right: pick([1, 2, 3, 4, 5, 6, 7, 8, 9]),
+    top: pick([20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10]),
+    left: pick([21, 22, 23, 24, 25, 26, 27, 28, 29]),
   };
 }
 
-/** 等距立體建築（三個面：正面、側面、頂面） */
-function building3D(space, level) {
+function ownerTint(ownerId) {
+  return PLAYER_TINTS[ownerId % PLAYER_TINTS.length];
+}
+
+function building3D(space, level, ownerId, players) {
   if (!level || !space.price) return '';
   const color = MP_COLORS[space.color] || '#64748b';
+  const tint = ownerId != null ? ownerTint(ownerId) : '#64748b';
+  const owner = players?.[ownerId];
+  const badge = owner ? `<span class="iso-owner" style="--ot:${tint}">${owner.avatar}</span>` : '';
   const tag = level === 3 ? `<span class="iso-tag">${(space.landmark || space.name || '').slice(0, 3)}</span>` : '';
   const spire = level === 3 ? '<div class="iso-spire"></div>' : '';
   const roof = level === 1 ? '<div class="iso-roof"></div>' : '';
@@ -31,11 +42,14 @@ function building3D(space, level) {
   const blocks = Array.from({ length: floors }, (_, i) =>
     `<div class="iso-block" style="--lift:${i * 10}px"><div class="iso-top"></div><div class="iso-left"></div><div class="iso-right"></div></div>`,
   ).join('');
-  return `<div class="iso-build lv${level}" style="--bc:${color};--bcd:${color}99">${roof}${spire}<div class="iso-scene">${blocks}</div>${tag}</div>`;
+  return `<div class="iso-build lv${level} owner-p${ownerId}" style="--bc:${color};--owner:${tint}">${badge}${roof}${spire}<div class="iso-scene">${blocks}</div>${tag}</div>`;
 }
 
-function centerBuilding3D(space, level) {
+function centerBuilding3D(space, level, ownerId, players) {
   const color = MP_COLORS[space?.color] || '#fbbf24';
+  const tint = ownerId != null ? ownerTint(ownerId) : color;
+  const owner = players?.[ownerId];
+  const badge = owner ? `<span class="iso-owner lg">${owner.avatar} ${owner.name}</span>` : '';
   const tag = level === 3 ? `<p class="cb3d-name">${space?.landmark || '地標'}</p>` : '';
   const spire = level === 3 ? '<div class="iso-spire lg"></div>' : '';
   const roof = level === 1 ? '<div class="iso-roof lg"></div>' : '';
@@ -43,43 +57,113 @@ function centerBuilding3D(space, level) {
   const blocks = Array.from({ length: floors }, (_, i) =>
     `<div class="iso-block lg" style="--lift:${i * 22}px"><div class="iso-top"></div><div class="iso-left"></div><div class="iso-right"></div></div>`,
   ).join('');
-  return `<div class="cb3d iso-build lv${level} anim-pop" style="--bc:${color};--bcd:${color}99">${roof}${spire}<div class="iso-scene lg">${blocks}</div>${tag}</div>`;
+  return `<div class="cb3d iso-build lv${level} anim-pop" style="--bc:${color};--owner:${tint}">${badge}${roof}${spire}<div class="iso-scene lg">${blocks}</div>${tag}</div>`;
 }
 
-function renderCell(space, players, propStates) {
+function renderCell(space, players, propStates, hideTokenFor) {
   const ps = propStates[String(space.id)];
   const lv = ps?.level || 0;
+  const ownerId = ps?.ownerId;
   const isProp = space.type === 'property';
+  const isStart = space.id === 0;
   const bar = isProp ? `<div class="mp-bar" style="background:${MP_COLORS[space.color] || '#666'}"></div>` : '';
-  const build = isProp ? building3D(space, lv) : '';
+  const build = isProp && lv ? building3D(space, lv, ownerId, players) : '';
   const price = isProp ? `<span class="mp-price">$${space.price.toLocaleString()}</span>` : '';
-  const tax = space.type === 'tax' ? `<span class="mp-price">$${space.tax}</span>` : '';
-  const tokens = players.filter((p) => !p.bankrupt && p.position === space.id)
-    .map((p) => `<span class="mp-token" data-pid="${p.id}">${p.avatar || '🙂'}</span>`).join('');
-  return `<div class="mp-cell ${space.type}" data-space-id="${space.id}">
-    ${bar}<div class="mp-cell-body"><span class="mp-name">${space.name}</span>${build}${price}${tax}
+  const taxHint = space.type === 'tax' ? `<span class="mp-tax-hint">${space.taxKind === 'luxury' ? '💎' : '🏛️'}</span>` : '';
+  const tokens = players.filter((p) => !p.bankrupt && p.position === space.id && p.id !== hideTokenFor)
+    .map((p) => `<span class="mp-token" data-pid="${p.id}" style="--pt:${ownerTint(p.id)}">${p.avatar || '🙂'}</span>`).join('');
+  const ownerAttr = ownerId != null ? ` style="--owner:${ownerTint(ownerId)}"` : '';
+  return `<div class="mp-cell ${space.type}${isStart ? ' mp-start' : ''}${ownerId != null ? ` owned-by-p${ownerId}` : ''}" data-space-id="${space.id}"${ownerAttr}>
+    ${bar}<div class="mp-cell-body"><span class="mp-name">${space.name}</span>${build}${price}${taxHint}
     <div class="mp-tokens">${tokens}</div></div></div>`;
 }
 
-function renderBoard(state, skipCenter) {
+function renderBoard(state, skipCenter, hideTokenFor) {
   const { bottom, right, top, left } = boardLayout(state.board);
   const ps = state.propertyStates || {};
   const p = state.players;
   const centerContent = skipCenter && mp$('mpCenterStage') ? mp$('mpCenterStage').innerHTML : `
-    <div class="mp-center-title">🎲 北北基大富翁</div>
+    <div class="mp-center-title">🎲 北北基</div>
     <div id="mpCenterStage" class="mp-center-stage"></div>
     <p id="mpCenterMsg" class="mp-center-msg"></p>`;
 
   mp$('mpBoard').innerHTML = `
     <div class="mp-grid">
-      <div class="mp-side mp-top">${top.map((s) => renderCell(s, p, ps)).join('')}</div>
+      <div class="mp-side mp-top">${top.map((s) => renderCell(s, p, ps, hideTokenFor)).join('')}</div>
       <div class="mp-middle-row">
-        <div class="mp-side mp-left">${left.map((s) => renderCell(s, p, ps)).join('')}</div>
+        <div class="mp-side mp-left">${left.map((s) => renderCell(s, p, ps, hideTokenFor)).join('')}</div>
         <div class="mp-center">${centerContent}</div>
-        <div class="mp-side mp-right">${right.map((s) => renderCell(s, p, ps)).join('')}</div>
+        <div class="mp-side mp-right">${right.map((s) => renderCell(s, p, ps, hideTokenFor)).join('')}</div>
       </div>
-      <div class="mp-side mp-bottom">${bottom.map((s) => renderCell(s, p, ps)).join('')}</div>
+      <div class="mp-side mp-bottom">${bottom.map((s) => renderCell(s, p, ps, hideTokenFor)).join('')}</div>
     </div>`;
+}
+
+function buildMovePath(from, to) {
+  const path = [];
+  if (from === to) return path;
+  let pos = from;
+  while (pos !== to) {
+    pos = (pos + 1) % 40;
+    path.push(pos);
+  }
+  return path;
+}
+
+function getCellCenter(spaceId) {
+  const cell = document.querySelector(`.mp-cell[data-space-id="${spaceId}"]`);
+  const board = mp$('mpBoard');
+  if (!cell || !board) return null;
+  const cr = cell.getBoundingClientRect();
+  const br = board.getBoundingClientRect();
+  return { x: cr.left + cr.width / 2 - br.left, y: cr.top + cr.height / 2 - br.top };
+}
+
+function ensureFloater() {
+  let floater = mp$('mpTokenFloater');
+  if (!floater) {
+    floater = document.createElement('div');
+    floater.id = 'mpTokenFloater';
+    floater.className = 'mp-token-floater';
+    mp$('mpBoard').style.position = 'relative';
+    mp$('mpBoard').appendChild(floater);
+  }
+  return floater;
+}
+
+async function animateTokenMove(state, playerIndex, from, to) {
+  const path = buildMovePath(from, to);
+  if (!path.length) return;
+  const player = state.players[playerIndex];
+  const gen = ++mpMoveGen;
+  mpAnimating = true;
+
+  renderBoard(state, true, playerIndex);
+  await sleep(50);
+
+  const floater = ensureFloater();
+  floater.textContent = player.avatar || '🙂';
+  floater.style.setProperty('--pt', ownerTint(playerIndex));
+  floater.classList.add('moving');
+  floater.style.display = 'grid';
+
+  const steps = [from, ...path];
+  for (let i = 0; i < steps.length; i++) {
+    if (gen !== mpMoveGen) break;
+    const pos = steps[i];
+    highlightCell(pos);
+    const pt = getCellCenter(pos);
+    if (pt) {
+      floater.style.transform = `translate(${pt.x}px, ${pt.y}px) translate(-50%, -50%) scale(${i === steps.length - 1 ? 1.15 : 1})`;
+    }
+    await sleep(i === 0 ? 120 : 400);
+  }
+
+  await sleep(200);
+  floater.classList.remove('moving');
+  floater.style.display = 'none';
+  document.querySelectorAll('.mp-cell').forEach((c) => c.classList.remove('highlight'));
+  mpAnimating = false;
 }
 
 function showCenter(html, msg) {
@@ -105,8 +189,10 @@ function showDiceResult(values) {
 
 function showBuildCenter(state, anim) {
   const space = state.board.find((s) => s.id === anim.propertyId) || { name: anim.propertyName, landmark: anim.landmark, color: 'green' };
+  const ps = state.propertyStates?.[String(anim.propertyId)];
+  const ownerId = ps?.ownerId ?? state.currentPlayerIndex;
   showCenter(
-    centerBuilding3D(space, anim.level),
+    centerBuilding3D(space, anim.level, ownerId, state.players),
     `${space.name} → ${['', '小公寓', '高樓', '地標'][anim.level]}`,
   );
 }
@@ -119,24 +205,8 @@ function showRentCenter(amount) {
   showCenter(`<div class="mp-rent-flash anim-pop"><span>💸</span><p>過路費<br>$${amount.toLocaleString()}</p></div>`, '');
 }
 
-async function animateMove(state, anim) {
-  if (!anim?.path?.length) return;
-  const idx = anim.playerIndex;
-  const player = state.players[idx];
-  mpAnimating = true;
-  player.position = anim.from ?? anim.path[0];
-  renderBoard(state, true);
-  for (const pos of anim.path) {
-    player.position = pos;
-    renderBoard(state, true);
-    highlightCell(pos);
-    await sleep(220);
-  }
-  player.position = anim.to;
-  renderBoard(state, true);
-  highlightCell(anim.to);
-  await sleep(300);
-  mpAnimating = false;
+function showTaxCenter(text, amount) {
+  showCenter(`<div class="mp-tax-flash anim-pop"><span>🏛️</span><p>${text}<br>$${amount.toLocaleString()}</p></div>`, '稅務事件');
 }
 
 function highlightCell(pos) {
@@ -149,14 +219,15 @@ function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 function renderPlayers(state, myIndex) {
   mp$('mpPlayers').innerHTML = state.players.map((p, i) => {
     const bonus = (window.FOOD_AVATARS || []).find((f) => f.emoji === p.avatar)?.bonus || '';
+    const tint = ownerTint(i);
     const props = Object.entries(state.propertyStates || {}).filter(([, ps]) => ps.ownerId === i)
       .map(([id]) => state.board.find((s) => String(s.id) === id)?.name).filter(Boolean);
-    return `<div class="mp-player-card ${i === state.currentPlayerIndex ? 'active' : ''} ${p.bankrupt ? 'out' : ''}">
+    return `<div class="mp-player-card ${i === state.currentPlayerIndex ? 'active' : ''} ${p.bankrupt ? 'out' : ''}" style="--pt:${tint}">
       <span class="mp-avatar-lg">${p.avatar || '🙂'}</span>
       <div><strong>${p.name}${i === myIndex ? '（你）' : ''}</strong>
       <span class="mp-bonus-tag">${bonus}</span>
       <span class="mp-money">$${p.money.toLocaleString()}</span></div>
-      <div class="mp-prop-list">${props.map((n) => `<span class="mp-prop-tag">${n}</span>`).join('')}</div>
+      <div class="mp-prop-list">${props.map((n) => `<span class="mp-prop-tag" style="border-color:${tint}">${n}</span>`).join('')}</div>
     </div>`;
   }).join('');
 }
@@ -186,8 +257,15 @@ function renderActions(view) {
       } else if (act.kind === 'rent') {
         html += `<button class="btn btn-primary" id="mpBtnPay">💸 付過路費 $${amt.toLocaleString()}</button>`;
         if (act.takeoverAmount) html += `<button class="btn btn-secondary" id="mpBtnTake" ${cur.money < act.takeoverAmount ? 'disabled' : ''}>⚔️ 搶購 $${act.takeoverAmount.toLocaleString()}</button>`;
-      } else if (act.kind === 'tax') html += `<button class="btn btn-primary" id="mpBtnPay">繳稅 $${amt.toLocaleString()}</button>`;
-      else if (act.kind === 'chance') html += `<button class="btn btn-primary" id="mpBtnChance">🃏 翻開機會卡</button>`;
+      } else if (act.kind === 'tax_land') {
+        html += `<div class="mp-btn-row"><button class="btn btn-primary" id="mpBtnTaxFull">📋 全額申報 $${amt.toLocaleString()}</button><button class="btn btn-secondary" id="mpBtnTaxGamble">🎲 抽稽查（半價或加碼）</button></div>`;
+      } else if (act.kind === 'tax_luxury') {
+        html += `<div class="mp-btn-row"><button class="btn btn-primary" id="mpBtnTaxPay">💳 老實繳 $${act.payAmount.toLocaleString()}</button><button class="btn btn-secondary" id="mpBtnTaxSpin">🎡 奢侈轉盤</button></div>`;
+      } else if (act.kind === 'tax') {
+        html += `<button class="btn btn-primary" id="mpBtnPay">繳稅 $${amt.toLocaleString()}</button>`;
+      } else if (act.kind === 'chance') {
+        html += `<button class="btn btn-primary" id="mpBtnChance">🃏 翻開機會卡</button>`;
+      }
     }
   }
   mp$('mpActions').innerHTML = html;
@@ -200,6 +278,10 @@ function renderActions(view) {
   mp$('mpBtnTake')?.addEventListener('click', () => mpSocket.emit('game:monopoly-takeover'));
   mp$('mpBtnSkip')?.addEventListener('click', () => mpSocket.emit('game:monopoly-skip'));
   mp$('mpBtnPay')?.addEventListener('click', () => mpSocket.emit(act.kind === 'rent' ? 'game:monopoly-pay-rent' : 'game:monopoly-pay-tax'));
+  mp$('mpBtnTaxFull')?.addEventListener('click', () => mpSocket.emit('game:monopoly-tax-choice', { choice: 'full' }));
+  mp$('mpBtnTaxGamble')?.addEventListener('click', () => mpSocket.emit('game:monopoly-tax-choice', { choice: 'gamble' }));
+  mp$('mpBtnTaxPay')?.addEventListener('click', () => mpSocket.emit('game:monopoly-tax-choice', { choice: 'pay' }));
+  mp$('mpBtnTaxSpin')?.addEventListener('click', () => mpSocket.emit('game:monopoly-tax-choice', { choice: 'spin' }));
   mp$('mpBtnChance')?.addEventListener('click', () => mpSocket.emit('game:monopoly-chance'));
 }
 
@@ -208,12 +290,33 @@ async function handleUpdate(view) {
   const state = view.state;
   const anim = state.centerAnim;
 
-  if (anim?.type === 'move' && anim.path?.length && !mpAnimating) {
-    renderBoard(state, true);
-    await animateMove(state, anim);
+  if (!mpPositionsInit) {
+    state.players.forEach((p, i) => { if (!p.bankrupt) mpLastPositions[i] = p.position; });
+    mpPositionsInit = true;
+    renderBoard(state);
+    renderPlayers(state, view.myIndex);
+    renderActions(view);
+    return;
+  }
+
+  const movers = [];
+  state.players.forEach((p, i) => {
+    if (p.bankrupt) return;
+    const prev = mpLastPositions[i];
+    if (prev !== undefined && prev !== p.position) movers.push({ i, from: prev, to: p.position });
+  });
+
+  if (movers.length && !mpAnimating) {
+    renderBoard(state, true, movers[0].i);
+    for (const m of movers) {
+      await animateTokenMove(state, m.i, m.from, m.to);
+    }
   } else {
     renderBoard(state);
   }
+
+  state.players.forEach((p, i) => { if (!p.bankrupt) mpLastPositions[i] = p.position; });
+
   renderPlayers(state, view.myIndex);
   renderActions(view);
 
@@ -227,6 +330,8 @@ async function handleUpdate(view) {
     showChanceCenter(state.lastChanceCard || anim.text || '機會卡');
   } else if (anim?.type === 'rent') {
     showRentCenter(anim.amount);
+  } else if (anim?.type === 'tax') {
+    showTaxCenter(anim.text || '稅務', anim.amount || 0);
   }
 }
 
@@ -246,7 +351,7 @@ window.FOOD_AVATARS = [
   { emoji: '🥟', name: '小籠包', bonus: '搶購費用 -10%' },
   { emoji: '🦪', name: '蚵仔煎', bonus: '收到的過路費 +15%' },
   { emoji: '🍍', name: '鳳梨酥', bonus: '被搶購時多收 12%' },
-  { emoji: '🍢', name: '滷味', bonus: '稅金 -20%' },
+  { emoji: '🍢', name: '滷味', bonus: '稅務事件 -20%（地價稅／奢侈稅）' },
   { emoji: '🍗', name: '雞排', bonus: '首次購地 -8%' },
   { emoji: '🍮', name: '豆花', bonus: '休息區恢復 $500' },
   { emoji: '🍱', name: '便當', bonus: '同色地產加成 +30%' },

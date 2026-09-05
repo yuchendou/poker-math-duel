@@ -23,7 +23,7 @@ FOOD_AVATARS = [
     {"id": "xlb", "emoji": "🥟", "name": "小籠包", "bonus": "搶購費用 -10%"},
     {"id": "oyster", "emoji": "🦪", "name": "蚵仔煎", "bonus": "收到的過路費 +15%"},
     {"id": "pineapple", "emoji": "🍍", "name": "鳳梨酥", "bonus": "被搶購時多收 12%"},
-    {"id": "luwei", "emoji": "🍢", "name": "滷味", "bonus": "稅金 -20%"},
+    {"id": "luwei", "emoji": "🍢", "name": "滷味", "bonus": "稅務事件 -20%（地價稅／奢侈稅）"},
     {"id": "chicken", "emoji": "🍗", "name": "雞排", "bonus": "首次購地 -8%"},
     {"id": "tofu", "emoji": "🍮", "name": "豆花", "bonus": "休息區恢復 $500"},
     {"id": "bento", "emoji": "🍱", "name": "便當", "bonus": "同色地產加成 +30%"},
@@ -37,7 +37,7 @@ BOARD: list[dict[str, Any]] = [
     {"type": "chance", "id": 2, "name": "機會"},
     {"type": "property", "id": 3, "name": "大同", "price": 1200, "rent": 300, "color": "brown", "landmark": "迪化街"},
     {"type": "property", "id": 4, "name": "三重", "price": 1600, "rent": 450, "color": "lightblue", "landmark": "重新橋"},
-    {"type": "tax", "id": 5, "name": "地價稅", "tax": 800},
+    {"type": "tax", "id": 5, "name": "地價稅", "taxKind": "land"},
     {"type": "property", "id": 6, "name": "蘆洲", "price": 1800, "rent": 500, "color": "lightblue", "landmark": "廟口"},
     {"type": "property", "id": 7, "name": "五股", "price": 2000, "rent": 550, "color": "lightblue", "landmark": "觀音山"},
     {"type": "property", "id": 8, "name": "泰山", "price": 2200, "rent": 600, "color": "pink", "landmark": "明志科大"},
@@ -58,7 +58,7 @@ BOARD: list[dict[str, Any]] = [
     {"type": "property", "id": 23, "name": "松山", "price": 5200, "rent": 1450, "color": "green", "landmark": "松山文創"},
     {"type": "property", "id": 24, "name": "信義", "price": 6000, "rent": 1700, "color": "green", "landmark": "微風"},
     {"type": "property", "id": 25, "name": "大安", "price": 6500, "rent": 1850, "color": "green", "landmark": "永康街"},
-    {"type": "tax", "id": 26, "name": "奢侈稅", "tax": 1500},
+    {"type": "tax", "id": 26, "name": "奢侈稅", "taxKind": "luxury"},
     {"type": "property", "id": 27, "name": "中山", "price": 7000, "rent": 2000, "color": "darkblue", "landmark": "光點台北"},
     {"type": "property", "id": 28, "name": "中正", "price": 7500, "rent": 2100, "color": "darkblue", "landmark": "總統府"},
     {"type": "property", "id": 29, "name": "士林", "price": 8000, "rent": 2250, "color": "darkblue", "landmark": "士林官邸"},
@@ -143,6 +143,30 @@ def calc_rent(state: dict, space: dict, owner_id: int, level: int) -> int:
     if owner.get("avatar") == "🦪":
         rent = int(rent * 1.15)
     return rent
+
+
+def _count_estate(state: dict, player_id: int) -> tuple[int, int]:
+    props = levels = 0
+    for ps in state.get("propertyStates", {}).values():
+        if ps.get("ownerId") == player_id:
+            props += 1
+            levels += ps.get("level", 0)
+    return props, levels
+
+
+def _tax_discount(state: dict, player: dict, amount: int) -> int:
+    if player.get("avatar") == "🍢":
+        return int(amount * 0.8)
+    return amount
+
+
+def _land_tax_base(state: dict, player_id: int) -> int:
+    props, levels = _count_estate(state, player_id)
+    return max(350, 180 * props + 120 * levels)
+
+
+def _luxury_tax_pay_amount(state: dict, player: dict) -> int:
+    return _tax_discount(state, player, 1200)
 
 
 def _set_anim(state: dict, anim: dict | None) -> None:
@@ -249,10 +273,22 @@ def _handle_landing(state: dict) -> dict:
     if st == "chance":
         return _set_pending(state, {"kind": "chance", "message": "抽到機會卡！翻開看看"})
     if st == "tax":
-        tax = space["tax"]
-        if cur.get("avatar") == "🍢":
-            tax = int(tax * 0.8)
-        return _set_pending(state, {"kind": "tax", "message": f"繳交 {space['name']} ${tax}", "amount": tax})
+        kind = space.get("taxKind", "land")
+        if kind == "land":
+            props, levels = _count_estate(state, cur["id"])
+            base = _land_tax_base(state, cur["id"])
+            amount = _tax_discount(state, cur, base)
+            return _set_pending(state, {
+                "kind": "tax_land",
+                "message": f"🏛️ 地價稅稽查！持有 {props} 塊地、{levels} 級建設",
+                "amount": amount, "baseAmount": base, "props": props, "levels": levels,
+            })
+        pay_amt = _luxury_tax_pay_amount(state, cur)
+        return _set_pending(state, {
+            "kind": "tax_luxury",
+            "message": "💎 奢侈稅！老實繳清或轉盤一搏？",
+            "payAmount": pay_amt,
+        })
     if st == "jail":
         return _end_turn(state, "路過探監")
     if st == "parking":
@@ -441,6 +477,65 @@ def pay_tax(state: dict) -> dict:
     if state["players"][state["currentPlayerIndex"]].get("bankrupt"):
         return state
     return _end_turn(state, f"繳稅 ${act['amount']}")
+
+
+def choose_tax(state: dict, choice: str) -> dict:
+    state = _clone(state)
+    act = state.get("pendingAction") or {}
+    cur = state["players"][state["currentPlayerIndex"]]
+    kind = act.get("kind")
+
+    if kind == "tax_land":
+        if choice == "gamble":
+            die = random.randint(1, 6)
+            mult = 0.5 if die <= 3 else 1.8
+            amount = _tax_discount(state, cur, int(act["baseAmount"] * mult))
+            label = "稽查過關減半" if die <= 3 else "稽查加碼"
+            msg = f"🎲 稽查骰 {die} 點 → {label}"
+        else:
+            amount = act["amount"]
+            msg = "📋 全額申報"
+        _set_anim(state, {"type": "tax", "text": msg, "amount": amount})
+        state = _pay(state, amount)
+        if cur.get("bankrupt"):
+            return state
+        return _end_turn(state, f"{msg} ${amount}")
+
+    if kind == "tax_luxury":
+        if choice == "spin":
+            roll = random.randint(1, 100)
+            if roll <= 15:
+                amount, msg = 0, "🎡 轉盤：免稅！"
+            elif roll <= 45:
+                amount = _tax_discount(state, cur, 600)
+                msg = "🎡 轉盤：小罰"
+            elif roll <= 75:
+                amount = _tax_discount(state, cur, 2200)
+                msg = "🎡 轉盤：大出血"
+            else:
+                total = 0
+                for i, pl in enumerate(state["players"]):
+                    if i != cur["id"] and not pl.get("bankrupt"):
+                        pay = min(250, pl["money"])
+                        pl["money"] -= pay
+                        total += pay
+                cur["money"] += total
+                amount, msg = 0, f"🎡 轉盤：大家請客 +${total}"
+            if amount > 0:
+                _set_anim(state, {"type": "tax", "text": msg, "amount": amount})
+                state = _pay(state, amount)
+            else:
+                _set_anim(state, {"type": "tax", "text": msg, "amount": 0})
+        else:
+            amount = act["payAmount"]
+            msg = "💳 老實繳清"
+            _set_anim(state, {"type": "tax", "text": msg, "amount": amount})
+            state = _pay(state, amount)
+        if cur.get("bankrupt"):
+            return state
+        return _end_turn(state, msg if amount == 0 else f"{msg} ${amount}")
+
+    return state
 
 
 def _chance_cards(state: dict) -> list[tuple[str, Callable[[dict], dict]]]:

@@ -2182,10 +2182,11 @@ button.mj-tile:not(.disabled):hover .mj-tile-body {
   border: 3px solid #b45309;
   border-radius: 14px;
   padding: 6px;
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
 }
 .mp-grid { display: flex; flex-direction: column; gap: 2px; }
-.mp-middle-row { display: grid; grid-template-columns: 72px minmax(200px, 1fr) 72px; gap: 2px; }
+.mp-middle-row { display: grid; grid-template-columns: 72px minmax(72px, 120px) 72px; gap: 2px; }
 .mp-side { display: grid; gap: 2px; }
 .mp-top, .mp-bottom { grid-template-columns: repeat(11, minmax(52px, 1fr)); }
 .mp-left, .mp-right { grid-template-rows: repeat(9, minmax(52px, 1fr)); }
@@ -2225,11 +2226,11 @@ button.mj-tile:not(.disabled):hover .mj-tile-body {
   justify-content: center;
   background: radial-gradient(ellipse at center, rgba(245,158,11,.12), rgba(15,23,42,.9));
   border-radius: 10px;
-  min-height: 280px;
-  padding: 1rem;
-  gap: 0.75rem;
+  min-height: 100px;
+  padding: 0.35rem;
+  gap: 0.35rem;
 }
-.mp-center-title { font-weight: 800; color: #fbbf24; font-size: 1rem; }
+.mp-center-title { font-weight: 800; color: #fbbf24; font-size: 0.78rem; }
 .mp-dice-stage { display: flex; gap: 1.25rem; align-items: center; justify-content: center; }
 .mp-die-3d {
   width: 3.5rem; height: 3.5rem;
@@ -2291,12 +2292,77 @@ button.mj-tile:not(.disabled):hover .mj-tile-body {
 
 /* 格子高亮（移動動畫） */
 .mp-cell.highlight {
-  box-shadow: inset 0 0 0 2px #fbbf24, 0 0 12px rgba(251,191,36,.45);
-  z-index: 2;
+  box-shadow: inset 0 0 0 3px #fbbf24, 0 0 18px rgba(251,191,36,.7);
+  z-index: 4;
+  animation: mpPulse 0.4s ease infinite alternate;
+}
+@keyframes mpPulse {
+  from { background: #1e293b; }
+  to { background: #334155; }
 }
 
+/* 出發格（右下角） */
+.mp-cell.mp-start {
+  box-shadow: inset 0 0 0 2px #fbbf24;
+  background: linear-gradient(135deg, #1e293b, #292524);
+}
+.mp-cell.mp-start .mp-name { color: #fbbf24; }
+
+/* 浮動棋子（逐格移動） */
+#mpBoard { position: relative; }
+.mp-token-floater {
+  position: absolute;
+  left: 0; top: 0;
+  width: 2rem; height: 2rem;
+  display: none;
+  place-items: center;
+  font-size: 1.6rem;
+  z-index: 50;
+  pointer-events: none;
+  filter: drop-shadow(0 0 8px var(--pt, #fbbf24)) drop-shadow(0 3px 6px rgba(0,0,0,.8));
+  transition: transform 0.38s cubic-bezier(.25,.8,.35,1);
+  will-change: transform;
+}
+.mp-token-floater.moving { transition-duration: 0.4s; }
+
+.mp-token { font-size: 0.85rem; line-height: 1; filter: drop-shadow(0 0 3px var(--pt, transparent)) drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+
+/* 業主標記 */
+.iso-build { --owner: #64748b; }
+.iso-owner {
+  position: absolute;
+  top: -4px; right: -6px;
+  font-size: 0.55rem;
+  z-index: 5;
+  background: var(--owner);
+  border-radius: 50%;
+  width: 14px; height: 14px;
+  display: grid; place-items: center;
+  box-shadow: 0 0 0 1px #000, 0 0 6px var(--owner);
+}
+.iso-owner.lg {
+  position: static;
+  width: auto; height: auto;
+  border-radius: 8px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.35rem;
+}
+.iso-left {
+  box-shadow: inset 4px 0 0 var(--owner);
+}
+.iso-top {
+  background: color-mix(in srgb, var(--bc) 45%, var(--owner) 25%);
+}
+.mp-cell[class*="owned-by"] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--owner) 55%, transparent);
+}
+.mp-prop-tag { border: 1px solid rgba(255,255,255,.15); }
+.mp-player-card { border-left: 3px solid var(--pt, transparent); }
+.mp-tax-hint { font-size: 0.7rem; }
+
 /* 中央舞台 */
-.mp-center-stage { min-height: 140px; display: flex; align-items: center; justify-content: center; width: 100%; }
+.mp-center-stage { min-height: 64px; display: flex; align-items: center; justify-content: center; width: 100%; }
 
 /* 通用 pop 動畫 */
 .anim-pop { animation: mpPop 0.55s cubic-bezier(.34,1.56,.64,1); }
@@ -2316,6 +2382,7 @@ button.mj-tile:not(.disabled):hover .mj-tile-body {
   position: relative;
   width: 26px;
   height: 28px;
+  perspective: 140px;
   transform-style: preserve-3d;
   transform: rotateX(58deg) rotateZ(-45deg);
 }
@@ -2422,6 +2489,17 @@ button.mj-tile:not(.disabled):hover .mj-tile-body {
 .mp-rent-flash span { font-size: 2.5rem; display: block; margin-bottom: 0.35rem; }
 .mp-rent-flash p { font-weight: 800; font-size: 1.1rem; margin: 0; line-height: 1.35; }
 
+/* 稅務中央動畫 */
+.mp-tax-flash {
+  background: linear-gradient(145deg, #1e3a5f, #0f172a);
+  color: #bae6fd; border-radius: 12px; padding: 0.85rem 1rem;
+  text-align: center; border: 2px solid #38bdf8;
+  box-shadow: 0 6px 18px rgba(56,189,248,.25);
+  font-size: 0.85rem;
+}
+.mp-tax-flash span { font-size: 1.75rem; display: block; margin-bottom: 0.25rem; }
+.mp-tax-flash p { font-weight: 700; margin: 0; line-height: 1.35; }
+
 /* 玩家加成標籤 */
 .mp-bonus-tag { display: block; font-size: 0.65rem; color: #94a3b8; margin-top: 2px; }
 .mp-rent-hint { text-align: center; color: #fbbf24; font-size: 0.78rem; margin: -0.25rem 0 0.25rem; }
@@ -2430,10 +2508,10 @@ button.mj-tile:not(.disabled):hover .mj-tile-body {
   .mp-game-wrap { grid-template-columns: 1fr; }
   .mp-sidebar { position: static; }
   .mp-top, .mp-bottom { grid-template-columns: repeat(11, minmax(36px, 1fr)); }
-  .mp-middle-row { grid-template-columns: 44px minmax(120px, 1fr) 44px; }
+  .mp-middle-row { grid-template-columns: 44px minmax(56px, 80px) 44px; }
   .mp-cell { min-height: 44px; font-size: 0.5rem; }
   .mp-name { font-size: 0.5rem; }
-  .mp-center { min-height: 160px; }
+  .mp-center { min-height: 72px; }
   .food-avatar-grid { grid-template-columns: repeat(5, 1fr); }
 }
 @media (min-width: 1101px) {
