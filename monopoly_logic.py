@@ -9,9 +9,8 @@ BOARD_SIZE = 40
 START_BONUS = 3000
 START_MONEY = 25000
 BANK_FEE = 500
-GOTO_JAIL_FINE = 1500
 BANK_BUYBACK_RATIO = 0.5
-BANK_POSITION = 30
+BANK_POSITION = 30  # 棋盤索引：銀行格（id 10）
 TAKEOVER_MULT = 1.5
 COLOR_SET_BONUS = 1.5
 
@@ -218,7 +217,7 @@ def create_initial_state(names: list[str], sids: list[str], avatars: list[str] |
             "id": i, "sid": sids[i] if i < len(sids) else None,
             "name": (name or f"玩家 {i + 1}").strip()[:12] or f"玩家 {i + 1}",
             "avatar": av, "money": START_MONEY, "position": 0,
-            "bankrupt": False,
+            "bankrupt": False, "inJail": False,
         })
     return {
         "phase": "rolling", "players": players, "currentPlayerIndex": 0,
@@ -252,9 +251,15 @@ def _check_winner(state: dict) -> dict:
 def _end_turn(state: dict, message: str | None = None) -> dict:
     nxt = _next_idx(state)
     p = state["players"][nxt]
-    state.update({"phase": "rolling", "currentPlayerIndex": nxt, "dice": None,
+    phase = "jail" if p.get("inJail") else "rolling"
+    state.update({"phase": phase, "currentPlayerIndex": nxt, "dice": None,
                   "diceRolling": False, "pendingAction": None, "centerAnim": None})
-    state["message"] = message or f"{p['avatar']} {p['name']} 的回合"
+    if message:
+        state["message"] = message
+    elif phase == "jail":
+        state["message"] = f"{p['avatar']} {p['name']} 在監獄中，此回合不能掷骰"
+    else:
+        state["message"] = f"{p['avatar']} {p['name']} 的回合"
     return _check_winner(state)
 
 
@@ -344,11 +349,9 @@ def _handle_landing(state: dict) -> dict:
             return _end_turn(state, "休息區恢復 $500（豆花加成）")
         return _end_turn(state, "在休息區")
     if st == "gotojail":
-        return _set_pending(state, {
-            "kind": "gotojail_fine",
-            "message": f"⚠️ 入獄罰款 ${GOTO_JAIL_FINE}（付清後送往銀行）",
-            "amount": GOTO_JAIL_FINE,
-        })
+        cur["inJail"] = True
+        _set_anim(state, {"type": "jail", "text": "被關進監獄！"})
+        return _end_turn(state, f"{cur['avatar']} {cur['name']} 入獄！下一輪不能掷骰")
 
     if st != "property":
         return _end_turn(state)
@@ -396,9 +399,11 @@ def _handle_landing(state: dict) -> dict:
 
 def roll_dice(state: dict) -> dict:
     state = _clone(state)
-    if state["phase"] not in ("rolling", "moving"):
+    if state["phase"] != "rolling":
         return state
     cur = state["players"][state["currentPlayerIndex"]]
+    if cur.get("inJail"):
+        return state
     d1, d2 = random.randint(1, 6), random.randint(1, 6)
     total = d1 + d2
     state["dice"] = [d1, d2]
@@ -478,7 +483,14 @@ def _do_build(state: dict, kind: str) -> dict:
 
 
 def skip_action(state: dict) -> dict:
-    return _end_turn(_clone(state), "放棄")
+    state = _clone(state)
+    if state["phase"] == "jail":
+        cur = state["players"][state["currentPlayerIndex"]]
+        if not cur.get("inJail"):
+            return state
+        cur["inJail"] = False
+        return _end_turn(state, f"{cur['avatar']} {cur['name']} 出監！")
+    return _end_turn(state, "放棄")
 
 
 def _do_bankrupt(state: dict, amount: int, recipient: int | None) -> dict:
@@ -544,8 +556,7 @@ def pay_rent(state: dict) -> dict:
 def pay_bank_fee(state: dict) -> dict:
     state = _clone(state)
     act = state.get("pendingAction") or {}
-    kind = act.get("kind")
-    if kind not in ("bank_fee", "gotojail_fine"):
+    if act.get("kind") != "bank_fee":
         return state
     state = _pay(state, act["amount"])
     if _pending_kind(state) == "bank_rescue":
@@ -553,10 +564,6 @@ def pay_bank_fee(state: dict) -> dict:
     cur = state["players"][state["currentPlayerIndex"]]
     if cur.get("bankrupt"):
         return state
-    if kind == "gotojail_fine":
-        cur["position"] = BANK_POSITION
-        _set_anim(state, {"type": "bank", "text": "前往銀行"})
-        return _handle_landing(state)
     return _end_turn(state, f"銀行手續費 ${act['amount']}")
 
 
@@ -700,6 +707,7 @@ def _chance_cards(state: dict) -> list[tuple[str, Callable[[dict], dict]]]:
         (f"{name} 後退 3 格", lambda s: _move_with_anim(_clone(s), -3)),
         (f"{name} 後退 5 格", lambda s: _move_with_anim(_clone(s), -5)),
         (f"{name} 回到起點", lambda s: _goto_start(_clone(s), idx)),
+        (f"{name} 去入獄", lambda s: _send_jail(_clone(s), idx)),
         (f"{name} 去銀行", lambda s: _send_bank(_clone(s), idx)),
         (f"全員給 {name} $300", lambda s: _collect_all(_clone(s), idx, 300)),
         (f"全員給 {name} $500", lambda s: _collect_all(_clone(s), idx, 500)),
@@ -717,6 +725,13 @@ def _goto_start(s: dict, idx: int) -> dict:
     bonus = s["passStartBonus"] + (800 if s["players"][idx].get("avatar") == "🍚" else 0)
     s["players"][idx]["money"] += bonus
     s["lastChanceCard"] = "回到起點"
+    return s
+
+
+def _send_jail(s: dict, idx: int) -> dict:
+    jail_pos = next(i for i, sp in enumerate(s["board"]) if sp.get("type") == "gotojail")
+    s["players"][idx]["position"] = jail_pos
+    s["lastChanceCard"] = "被送去入獄"
     return s
 
 

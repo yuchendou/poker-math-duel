@@ -2545,6 +2545,18 @@ button.mj-tile:not(.disabled):hover .mj-tile-body {
 .mp-bank-flash span { font-size: 2.5rem; display: block; margin-bottom: 0.35rem; }
 .mp-bank-flash p { font-weight: 800; font-size: 1rem; margin: 0; line-height: 1.35; }
 
+.mp-player-card.jailed { border-color: #f87171; box-shadow: 0 0 0 1px rgba(248,113,113,.3); }
+
+/* 入獄中央動畫 */
+.mp-jail-flash {
+  background: linear-gradient(145deg, #450a0a, #1a0a0a);
+  color: #fecaca; border-radius: 14px; padding: 1.25rem 1.75rem;
+  text-align: center; border: 2px solid #ef4444;
+  box-shadow: 0 8px 24px rgba(239,68,68,.35);
+}
+.mp-jail-flash span { font-size: 2.5rem; display: block; margin-bottom: 0.35rem; }
+.mp-jail-flash p { font-weight: 800; font-size: 1rem; margin: 0; line-height: 1.35; }
+
 .btn-danger {
   background: #dc2626;
   color: #fff;

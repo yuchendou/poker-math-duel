@@ -227,6 +227,13 @@ function highlightCell(pos) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+function showJailCenter(text) {
+  showCenter(
+    `<div class="mp-jail-flash anim-pop"><span>🔒</span><p>${text || '被關進監獄！'}</p></div>`,
+    '入獄',
+  );
+}
+
 function showBankCenter(text, amount) {
   showCenter(
     `<div class="mp-bank-flash anim-pop"><span>🏦</span><p>${text}${amount ? `<br>+$${amount.toLocaleString()}` : ''}</p></div>`,
@@ -257,9 +264,9 @@ function renderPlayers(state, myIndex) {
     const tint = ownerTint(i);
     const props = Object.entries(state.propertyStates || {}).filter(([, ps]) => ps.ownerId === i)
       .map(([id]) => state.board.find((s) => String(s.id) === id)?.name).filter(Boolean);
-    return `<div class="mp-player-card ${i === state.currentPlayerIndex ? 'active' : ''} ${p.bankrupt ? 'out' : ''}" style="--pt:${tint}">
+    return `<div class="mp-player-card ${i === state.currentPlayerIndex ? 'active' : ''} ${p.bankrupt ? 'out' : ''}${p.inJail ? ' jailed' : ''}" style="--pt:${tint}">
       <span class="mp-avatar-lg">${p.avatar || '🙂'}</span>
-      <div><strong>${p.name}${i === myIndex ? '（你）' : ''}</strong>
+      <div><strong>${p.name}${i === myIndex ? '（你）' : ''}${p.inJail ? ' 🔒' : ''}</strong>
       <span class="mp-bonus-tag">${bonus}</span>
       <span class="mp-money">$${p.money.toLocaleString()}</span></div>
       <div class="mp-prop-list">${props.map((n) => `<span class="mp-prop-tag" style="border-color:${tint}">${n}</span>`).join('')}</div>
@@ -276,7 +283,11 @@ function renderActions(view) {
   if (!isMyTurn && state.phase !== 'gameover') html = `<p class="mp-wait">${cur.avatar} 等待 ${cur.name}…</p>`;
   else if (state.phase === 'gameover' && state.winner) html = `<div class="mp-win">🏆 ${state.winner.avatar} ${state.winner.name} 獲勝！</div>`;
   else if (isMyTurn) {
-    const canRoll = state.phase === 'rolling' && !cur.bankrupt;
+    if (state.phase === 'jail') {
+      html += `<p class="mp-pending">🔒 你在監獄中，此回合不能掷骰</p>`;
+      html += `<button type="button" class="btn btn-secondary" id="mpBtnSkipJail">⏳ 跳過此回合</button>`;
+    } else {
+    const canRoll = state.phase === 'rolling' && !cur.bankrupt && !cur.inJail;
     if (canRoll && !act) html += `<button type="button" class="btn btn-primary" id="mpBtnRoll">🎲 擲骰子</button>`;
     if (act) {
       html += `<p class="mp-pending">${act.message}</p>`;
@@ -291,7 +302,7 @@ function renderActions(view) {
       } else if (act.kind === 'rent') {
         html += `<button class="btn btn-primary" id="mpBtnPay">💸 付過路費 $${amt.toLocaleString()}</button>`;
         if (act.takeoverAmount) html += `<button class="btn btn-secondary" id="mpBtnTake" ${cur.money < act.takeoverAmount ? 'disabled' : ''}>⚔️ 搶購 $${act.takeoverAmount.toLocaleString()}</button>`;
-      } else if (act.kind === 'bank_fee' || act.kind === 'gotojail_fine') {
+      } else if (act.kind === 'bank_fee') {
         html += `<button class="btn btn-primary" id="mpBtnBankFee">🏦 繳費 $${amt.toLocaleString()}</button>`;
       } else if (act.kind === 'bank_rescue') {
         html += `<div class="mp-btn-row"><button class="btn btn-primary" id="mpBtnSellBank">🏦 售地套現 $${act.liquidation.toLocaleString()}</button><button class="btn btn-danger" id="mpBtnBankrupt">💸 宣告破產</button></div>`;
@@ -305,12 +316,14 @@ function renderActions(view) {
         html += `<button class="btn btn-primary" id="mpBtnChance">🃏 翻開機會卡</button>`;
       }
     }
+    }
   }
   mp$('mpActions').innerHTML = html;
   mp$('mpBtnRoll')?.addEventListener('click', () => {
     showDiceCenter(['?', '?']);
     setTimeout(() => mpSocket.emit('game:monopoly-roll'), 400);
   });
+  mp$('mpBtnSkipJail')?.addEventListener('click', () => mpSocket.emit('game:monopoly-skip'));
   mp$('mpBtnBankFee')?.addEventListener('click', () => mpSocket.emit('game:monopoly-bank-fee'));
   mp$('mpBtnSellBank')?.addEventListener('click', () => mpSocket.emit('game:monopoly-sell-bank'));
   mp$('mpBtnBankrupt')?.addEventListener('click', () => mpSocket.emit('game:monopoly-bankrupt'));
@@ -380,6 +393,8 @@ async function handleUpdate(view) {
     showTaxCenter(anim.text || '稅務', anim.amount || 0);
   } else if (centerType === 'bank') {
     showBankCenter(anim.text || '銀行', anim.amount);
+  } else if (centerType === 'jail') {
+    showJailCenter(anim.text);
   } else if (hasDice) {
     showDiceResult(state.dice);
   }
