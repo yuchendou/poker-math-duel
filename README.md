@@ -1,89 +1,57 @@
-# 大富翁（Monopoly）
+# 大富翁（Monopoly）— 線上雙人版
 
-台灣主題的多人大富翁桌遊，支援 2–4 名玩家在同一裝置上輪流遊玩。
+台灣主題的大富翁桌遊，支援 **2 名玩家在不同裝置上線連線對戰**。
 
 ## 功能
 
-- 28 格棋盤，包含台灣各地地產（台北車站、101 大樓、墾丁等）
-- 擲骰子移動、購買地產、收取租金
-- 同色地產全數持有時租金加倍
-- 機會卡、所得稅、奢侈稅
-- 入獄／探監機制
-- 破產出局，最後倖存者獲勝
+- 建立／加入房間（6 位房間代碼）
+- 即時同步棋盤、骰子、購地、收租
+- 28 格台灣地產棋盤
+- 機會卡、稅金、入獄等完整規則
 
-## 部署上線（跟朋友一起玩）
-
-> **重要**：之前 Cursor 裡的 `http://127.0.0.1:43123` 只是本機預覽，關掉就失效，**不是** Render 網址。
->
-> 目前遊戲是「同一台裝置輪流玩」（傳手機／圍在一起玩）。部署後會得到一個永久網址，任何人用瀏覽器打開就能玩。
-
-### 方法一：Render（推薦，你之前可能用的就是這個）
-
-1. 把程式碼推到 GitHub（見下方「推到 GitHub」）
-2. 前往 [render.com](https://render.com) 登入
-3. 點 **New +** → **Static Site**
-4. 連接你的 GitHub  repo（例如 `poker-math-duel`）
-5. 設定如下：
-   - **Build Command**：`npm install && npm run build`
-   - **Publish Directory**：`dist`
-6. 點 **Create Static Site**，等 2–3 分鐘
-7. 完成後會得到網址，例如：`https://monopoly-game-xxxx.onrender.com`
-
-若 repo 根目錄已有 `render.yaml`，也可在 Render 選 **New Blueprint** 一鍵部署。
-
-### 方法二：Vercel（更簡單）
-
-1. 程式碼推到 GitHub
-2. 前往 [vercel.com](https://vercel.com) 登入
-3. **Add New Project** → 選你的 repo → 直接 Deploy（會自動偵測 Vite）
-4. 完成後得到 `https://xxx.vercel.app`
-
-### 方法三：Netlify
-
-1. 程式碼推到 GitHub
-2. 前往 [netlify.com](https://netlify.com) 登入
-3. **Add new site** → **Import an existing project** → 選 repo
-4. Build command：`npm run build`，Publish directory：`dist`
-
-### 推到 GitHub
-
-在本機終端機（或 Cursor 終端機）執行：
-
-```bash
-# 若還沒建立 GitHub repo，先到 github.com 新建一個（例如 monopoly-game）
-
-git remote add github git@github.com:yuchendou/你的repo名稱.git
-git push -u github main
-```
-
-若 `poker-math-duel` 已有舊專案，可以新建 repo（例如 `monopoly-game`）避免覆蓋撲克遊戲。
-
-## 開始遊玩
+## 本地開發
 
 ```bash
 npm install
 npm run dev
 ```
 
-在瀏覽器開啟 `http://localhost:43123`。
+- 前端：http://localhost:43124
+- 後端（WebSocket）：http://localhost:43123
 
-## 建置
+用兩個瀏覽器分頁或兩台裝置測試連線。
+
+## 部署到 Render（跟朋友一起玩）
+
+### 1. 推到 GitHub
 
 ```bash
-npm run build
-npm run preview
+# 在 GitHub 建立 repo，例如 monopoly-game
+git remote add github git@github.com:yuchendou/monopoly-game.git
+git push -u github main
 ```
 
-## 遊戲規則
+### 2. Render 設定
 
-| 項目 | 說明 |
-|------|------|
-| 起始資金 | $15,000 |
-| 經過起點 | 獲得 $2,000 |
-| 破產 | 資金不足以支付時出局，資產轉移給債權人 |
-| 監獄 | 擲出雙骰出獄，或連續 3 回合後付 $500 保釋金 |
+1. 登入 [render.com](https://render.com)
+2. **New +** → **Web Service**（不是 Static Site）
+3. 連接 GitHub repo
+4. 設定：
+   - **Runtime**：Node
+   - **Build Command**：`npm install && npm run build`
+   - **Start Command**：`npm start`
+5. 部署完成後得到 `https://你的服務名.onrender.com`
+
+> repo 根目錄已有 `render.yaml`，也可用 **New Blueprint** 一鍵部署。
+
+### 3. 怎麼玩
+
+1. 玩家 A 開啟 Render 網址 → **建立房間** → 記下 6 位代碼
+2. 玩家 B 在另一台手機／電腦開啟同一網址 → **加入房間** → 輸入代碼
+3. 兩人到齊後自動開始，輪流擲骰
 
 ## 技術棧
 
-- Vite + React + TypeScript
-- Tailwind CSS
+- 前端：Vite + React + TypeScript + Tailwind CSS
+- 後端：Express + Socket.io
+- 部署：Render Web Service（Node）

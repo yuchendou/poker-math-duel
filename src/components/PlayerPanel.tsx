@@ -1,12 +1,17 @@
-import type { Player } from '../game/types'
-import { board, COLOR_MAP } from '../game/board'
+import type { Player } from '@shared/game/types'
+import { board, COLOR_MAP } from '@shared/game/board'
 
 interface PlayerPanelProps {
   players: Player[]
   currentPlayerIndex: number
+  myPlayerIndex: number
 }
 
-export default function PlayerPanel({ players, currentPlayerIndex }: PlayerPanelProps) {
+export default function PlayerPanel({
+  players,
+  currentPlayerIndex,
+  myPlayerIndex,
+}: PlayerPanelProps) {
   return (
     <div className="flex flex-col gap-3">
       {players.map((player, i) => (
@@ -27,6 +32,7 @@ export default function PlayerPanel({ players, currentPlayerIndex }: PlayerPanel
             />
             <span className="font-bold text-white">
               {player.name}
+              {i === myPlayerIndex && '（你）'}
               {player.inJail && ' 🔒'}
               {player.bankrupt && ' 💸'}
             </span>
@@ -34,7 +40,7 @@ export default function PlayerPanel({ players, currentPlayerIndex }: PlayerPanel
               <span className="ml-auto text-xs text-amber-400">回合中</span>
             )}
           </div>
-          <div className="mt-2 text-lg font-mono font-bold text-emerald-400">
+          <div className="mt-2 font-mono text-lg font-bold text-emerald-400">
             ${player.money.toLocaleString()}
           </div>
           {player.properties.length > 0 && (

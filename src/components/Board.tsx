@@ -1,5 +1,5 @@
-import { BOARD_SIZE, COLOR_MAP } from '../game/board'
-import type { BoardSpace, Player } from '../game/types'
+import { BOARD_SIZE, COLOR_MAP } from '@shared/game/board'
+import type { BoardSpace, Player } from '@shared/game/types'
 
 interface BoardProps {
   spaces: BoardSpace[]
@@ -63,17 +63,24 @@ function SpaceCell({
   )
 }
 
-function CenterLogo() {
+function CenterLogo({ roomCode }: { roomCode?: string }) {
   return (
     <div className="flex h-full flex-col items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/20 to-red-600/20 p-4 text-center">
       <div className="text-4xl">🎲</div>
       <h1 className="mt-2 text-xl font-black text-amber-400 sm:text-2xl">大富翁</h1>
-      <p className="mt-1 text-xs text-slate-400">台灣地產大亨</p>
+      <p className="mt-1 text-xs text-slate-400">線上雙人對戰</p>
+      {roomCode && (
+        <p className="mt-2 font-mono text-sm tracking-widest text-slate-300">{roomCode}</p>
+      )}
     </div>
   )
 }
 
-export default function Board({ spaces, players }: BoardProps) {
+export default function Board({
+  spaces,
+  players,
+  roomCode,
+}: BoardProps & { roomCode?: string }) {
   const bottom = spaces.slice(0, 7)
   const right = spaces.slice(7, 14)
   const top = spaces.slice(14, 21).reverse()
@@ -88,36 +95,31 @@ export default function Board({ spaces, players }: BoardProps) {
           gridTemplateRows: 'repeat(9, minmax(0, 1fr))',
         }}
       >
-        {/* Top row */}
         {top.map((space, i) => (
           <div key={space.id} style={{ gridColumn: i + 2, gridRow: 1 }}>
             <SpaceCell space={space} players={players} rotation={180} />
           </div>
         ))}
 
-        {/* Left column */}
         {left.map((space, i) => (
           <div key={space.id} style={{ gridColumn: 1, gridRow: i + 2 }}>
             <SpaceCell space={space} players={players} rotation={90} />
           </div>
         ))}
 
-        {/* Center */}
         <div
           className="overflow-hidden rounded-lg"
           style={{ gridColumn: '2 / 9', gridRow: '2 / 9' }}
         >
-          <CenterLogo />
+          <CenterLogo roomCode={roomCode} />
         </div>
 
-        {/* Right column */}
         {right.map((space, i) => (
           <div key={space.id} style={{ gridColumn: 9, gridRow: i + 2 }}>
             <SpaceCell space={space} players={players} rotation={-90} />
           </div>
         ))}
 
-        {/* Bottom row */}
         {bottom.map((space, i) => (
           <div key={space.id} style={{ gridColumn: i + 1, gridRow: 9 }}>
             <SpaceCell space={space} players={players} />

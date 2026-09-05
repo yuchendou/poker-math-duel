@@ -1,84 +1,72 @@
-import { useCallback, useState } from 'react'
 import ActionPanel from './components/ActionPanel'
 import Board from './components/Board'
+import LobbyScreen from './components/LobbyScreen'
 import PlayerPanel from './components/PlayerPanel'
-import SetupScreen from './components/SetupScreen'
-import { createInitialState, rollDice } from './game/gameLogic'
-import type { GameState } from './game/types'
+import { useOnlineGame } from './hooks/useOnlineGame'
 
 export default function App() {
-  const [screen, setScreen] = useState<'setup' | 'game'>('setup')
-  const [playerCount, setPlayerCount] = useState(2)
-  const [names, setNames] = useState(['玩家 1', '玩家 2', '玩家 3', '玩家 4'])
-  const [gameState, setGameState] = useState<GameState | null>(null)
+  const { connectionStatus, roomInfo, gamePayload, error, setError, setRoomInfo, setGamePayload } =
+    useOnlineGame()
 
-  const handleStart = useCallback(() => {
-    const activeNames = names.slice(0, playerCount)
-    setGameState(createInitialState(activeNames))
-    setScreen('game')
-  }, [names, playerCount])
-
-  const handleRoll = useCallback(() => {
-    setGameState((prev) => (prev ? rollDice(prev) : prev))
-  }, [])
-
-  const handleAction = useCallback((next: GameState) => {
-    setGameState(next)
-  }, [])
-
-  const handleRestart = () => {
-    setScreen('setup')
-    setGameState(null)
+  const handleReset = () => {
+    setRoomInfo(null)
+    setGamePayload(null)
+    setError(null)
+    window.location.reload()
   }
 
-  if (screen === 'setup') {
+  if (!gamePayload) {
     return (
-      <SetupScreen
-        playerCount={playerCount}
-        names={names}
-        onCountChange={setPlayerCount}
-        onNameChange={(i, name) => {
-          const next = [...names]
-          next[i] = name
-          setNames(next)
-        }}
-        onStart={handleStart}
+      <LobbyScreen
+        connectionStatus={connectionStatus}
+        error={error}
+        roomInfo={roomInfo}
+        onReset={handleReset}
       />
     )
   }
 
-  if (!gameState) return null
+  const { state, roomCode } = gamePayload
+  const myPlayerIndex = gamePayload.playerIndex
+  const isMyTurn = state.currentPlayerIndex === myPlayerIndex
 
   return (
     <div className="min-h-screen p-3 sm:p-6">
       <header className="mb-4 flex items-center justify-between">
-        <h1 className="text-xl font-black text-amber-400 sm:text-2xl">🎲 大富翁</h1>
+        <div>
+          <h1 className="text-xl font-black text-amber-400 sm:text-2xl">🎲 大富翁</h1>
+          <p className="text-xs text-slate-400">
+            房間 {roomCode}
+            {isMyTurn ? ' · 輪到你了！' : ' · 等待對手…'}
+          </p>
+        </div>
         <button
           type="button"
-          onClick={handleRestart}
+          onClick={handleReset}
           className="rounded-lg border border-slate-600 px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-800"
         >
-          重新開始
+          離開
         </button>
       </header>
 
       <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[220px_1fr_220px]">
         <aside className="order-2 lg:order-1">
           <PlayerPanel
-            players={gameState.players}
-            currentPlayerIndex={gameState.currentPlayerIndex}
+            players={state.players}
+            currentPlayerIndex={state.currentPlayerIndex}
+            myPlayerIndex={myPlayerIndex}
           />
         </aside>
 
         <main className="order-1 lg:order-2">
-          <Board spaces={gameState.board} players={gameState.players} />
+          <Board spaces={state.board} players={state.players} roomCode={roomCode} />
           <div className="mt-4 lg:hidden">
-            <ActionPanel state={gameState} onAction={handleAction} onRoll={handleRoll} />
+            <ActionPanel state={state} isMyTurn={isMyTurn} />
           </div>
         </main>
 
         <aside className="order-3 hidden lg:block">
-          <ActionPanel state={gameState} onAction={handleAction} onRoll={handleRoll} />
+          <ActionPanel state={state} isMyTurn={isMyTurn} />
         </aside>
       </div>
     </div>
