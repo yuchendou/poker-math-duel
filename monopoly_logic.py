@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import random
+import uuid
 from typing import Any, Callable
 
 BOARD_SIZE = 40
@@ -77,10 +78,10 @@ _RAW_BOARD: list[dict[str, Any]] = [
     {"type": "property", "id": 39, "name": "象山", "price": 7200, "rent": 2050, "color": "darkblue", "landmark": "象山步道"},
 ]
 
-# 逆時針：右下出發 → 底排向左 → 左側(內湖側)向上 → 頂排(南港→信義…)向右 → 右側向下
+# 逆時針：右下出發 → 底排向左 → 入獄後左欄向上(板橋→內湖) → 頂排 → 右欄向下
 _CCW_PATH = [
     0, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30,
-    19, 18, 17, 16, 15, 14, 13, 12, 11,
+    11, 12, 13, 14, 15, 16, 17, 18, 19,
     20, 21, 22, 23, 24, 25, 27, 26, 28, 29, 10,
     9, 8, 7, 6, 5, 4, 3, 2, 1,
 ]
@@ -225,7 +226,8 @@ def create_initial_state(names: list[str], sids: list[str], avatars: list[str] |
         "message": f"{players[0]['avatar']} {players[0]['name']} 的回合",
         "pendingAction": None, "winner": None, "passStartBonus": START_BONUS,
         "foodAvatars": FOOD_AVATARS, "centerAnim": None,
-        "lastChanceCard": None,
+        "lastChanceCard": None, "lastDiceRoll": None,
+        "gameId": uuid.uuid4().hex[:8],
     }
 
 
@@ -252,8 +254,8 @@ def _end_turn(state: dict, message: str | None = None) -> dict:
     nxt = _next_idx(state)
     p = state["players"][nxt]
     phase = "jail" if p.get("inJail") else "rolling"
-    state.update({"phase": phase, "currentPlayerIndex": nxt, "dice": None,
-                  "diceRolling": False, "pendingAction": None, "centerAnim": None})
+    state.update({"phase": phase, "currentPlayerIndex": nxt, "diceRolling": False,
+                  "pendingAction": None, "centerAnim": None})
     if message:
         state["message"] = message
     elif phase == "jail":
@@ -407,6 +409,11 @@ def roll_dice(state: dict) -> dict:
     d1, d2 = random.randint(1, 6), random.randint(1, 6)
     total = d1 + d2
     state["dice"] = [d1, d2]
+    state["lastDiceRoll"] = {
+        "playerIndex": state["currentPlayerIndex"],
+        "values": [d1, d2],
+        "sum": total,
+    }
     state["diceRolling"] = True
     state = _move_with_anim(state, total)
     state["diceRolling"] = False

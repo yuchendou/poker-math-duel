@@ -4,6 +4,8 @@ let mpLastPositions = {};
 let mpAnimating = false;
 let mpMoveGen = 0;
 let mpPositionsInit = false;
+let mpCachedDice = null;
+let mpGameId = null;
 
 const MP_COLORS = {
   brown: '#92400e', lightblue: '#38bdf8', pink: '#ec4899', orange: '#f97316',
@@ -241,11 +243,41 @@ function showBankCenter(text, amount) {
   );
 }
 
+function diceHtml(values, cls = 'mp-die-show') {
+  return values.map((d) => `<span class="${cls}">${d}</span>`).join('');
+}
+
+function getActiveDice(state) {
+  if (state.dice?.length === 2) return state.dice;
+  if (state.lastDiceRoll?.values?.length === 2) return state.lastDiceRoll.values;
+  return mpCachedDice;
+}
+
+function renderDiceHero(state, myIndex) {
+  const hero = mp$('mpDiceHero');
+  if (!hero) return;
+  const roll = state.lastDiceRoll;
+  const dice = getActiveDice(state);
+  if (!dice) {
+    hero.classList.add('hidden');
+    hero.innerHTML = '';
+    return;
+  }
+  const sum = dice[0] + dice[1];
+  const roller = roll ? state.players[roll.playerIndex] : state.players[state.currentPlayerIndex];
+  const isMine = roll ? roll.playerIndex === myIndex : state.currentPlayerIndex === myIndex;
+  hero.classList.remove('hidden');
+  hero.innerHTML = `
+    <span class="mp-dice-hero-label">${isMine ? '🎲 你掷出' : `${roller?.avatar || ''} ${roller?.name || ''} 掷出`}</span>
+    <div class="mp-dice-hero-dice">${diceHtml(dice, 'mp-dice-hero-die')}</div>
+    <span class="mp-dice-hero-sum">= ${sum} 點</span>`;
+}
+
 function renderDiceBar(state) {
   const bar = mp$('mpDiceBar');
   if (!bar) return;
-  const dice = state.dice;
-  if (!dice || dice.length < 2) {
+  const dice = getActiveDice(state);
+  if (!dice) {
     bar.classList.add('hidden');
     bar.innerHTML = '';
     return;
@@ -253,9 +285,15 @@ function renderDiceBar(state) {
   const sum = dice[0] + dice[1];
   bar.classList.remove('hidden');
   bar.innerHTML = `
-    <span class="mp-dice-bar-label">本回合骰子</span>
-    <div class="mp-dice-bar-dice">${dice.map((d) => `<span class="mp-dice-bar-die">${d}</span>`).join('')}</div>
+    <span class="mp-dice-bar-label">最新骰點</span>
+    <div class="mp-dice-bar-dice">${diceHtml(dice, 'mp-dice-bar-die')}</div>
     <span class="mp-dice-bar-sum">= ${sum} 點</span>`;
+}
+
+function diceInlineHtml(dice) {
+  if (!dice) return '';
+  const sum = dice[0] + dice[1];
+  return `<div class="mp-dice-inline">🎲 ${diceHtml(dice)} <strong>= ${sum} 點</strong></div>`;
 }
 
 function renderPlayers(state, myIndex) {
@@ -275,14 +313,22 @@ function renderPlayers(state, myIndex) {
 }
 
 function renderActions(view) {
-  const { state, isMyTurn } = view;
+  const { state, isMyTurn, myIndex } = view;
   const cur = state.players[state.currentPlayerIndex];
   const act = state.pendingAction;
+  const activeDice = getActiveDice(state);
+  const myRoll = state.lastDiceRoll?.playerIndex === myIndex ? state.lastDiceRoll.values : null;
   mp$('mpMessage').textContent = state.message || '';
   let html = '';
   if (!isMyTurn && state.phase !== 'gameover') html = `<p class="mp-wait">${cur.avatar} 等待 ${cur.name}…</p>`;
-  else if (state.phase === 'gameover' && state.winner) html = `<div class="mp-win">🏆 ${state.winner.avatar} ${state.winner.name} 獲勝！</div>`;
-  else if (isMyTurn) {
+  else if (state.phase === 'gameover' && state.winner) {
+    html += `<div class="mp-win">🏆 ${state.winner.avatar} ${state.winner.name} 獲勝！</div>`;
+    html += `<p class="mp-pending">有人破產，本局結束</p>`;
+    if (window.mpIsHost) html += `<button type="button" class="btn btn-primary" id="mpBtnRestart">🔄 再來一局</button>`;
+  } else if (isMyTurn) {
+    if (myRoll || (activeDice && state.currentPlayerIndex === myIndex && state.phase !== 'rolling')) {
+      html += diceInlineHtml(myRoll || activeDice);
+    }
     if (state.phase === 'jail') {
       html += `<p class="mp-pending">🔒 你在監獄中，此回合不能掷骰</p>`;
       html += `<button type="button" class="btn btn-secondary" id="mpBtnSkipJail">⏳ 跳過此回合</button>`;
@@ -336,21 +382,44 @@ function renderActions(view) {
   mp$('mpBtnTaxPay')?.addEventListener('click', () => mpSocket.emit('game:monopoly-tax-choice', { choice: 'pay' }));
   mp$('mpBtnTaxSpin')?.addEventListener('click', () => mpSocket.emit('game:monopoly-tax-choice', { choice: 'spin' }));
   mp$('mpBtnChance')?.addEventListener('click', () => mpSocket.emit('game:monopoly-chance'));
+  mp$('mpBtnRestart')?.addEventListener('click', () => mpSocket.emit('game:start-round'));
+}
+
+function refreshDiceDisplay(state, myIndex, anim) {
+  renderDiceHero(state, myIndex);
+  renderDiceBar(state);
+  const dice = getActiveDice(state);
+  if (!dice) return;
+  const centerType = anim?.type;
+  if (centerType === 'dice' && anim.values) return;
+  if (['build', 'chance', 'rent', 'tax', 'bank', 'jail'].includes(centerType)) return;
+  showDiceResult(dice);
 }
 
 async function handleUpdate(view) {
   mpShowPanel(mpPanels.monopolyGame);
   const state = view.state;
   const anim = state.centerAnim;
+  if (state.dice?.length === 2) mpCachedDice = state.dice;
+  else if (state.lastDiceRoll?.values?.length === 2) mpCachedDice = state.lastDiceRoll.values;
+
+  if (state.gameId !== mpGameId) {
+    mpGameId = state.gameId;
+    mpPositionsInit = false;
+    mpCachedDice = null;
+    mpLastPositions = {};
+    mpMoveGen = 0;
+  }
 
   if (!mpPositionsInit) {
     state.players.forEach((p, i) => { if (!p.bankrupt) mpLastPositions[i] = p.position; });
     mpPositionsInit = true;
     renderBoard(state);
+    renderDiceHero(state, view.myIndex);
     renderDiceBar(state);
     renderPlayers(state, view.myIndex);
     renderActions(view);
-    if (state.dice?.length === 2) showDiceResult(state.dice);
+    refreshDiceDisplay(state, view.myIndex, anim);
     return;
   }
 
@@ -372,17 +441,18 @@ async function handleUpdate(view) {
 
   state.players.forEach((p, i) => { if (!p.bankrupt) mpLastPositions[i] = p.position; });
 
+  renderDiceHero(state, view.myIndex);
   renderDiceBar(state);
   renderPlayers(state, view.myIndex);
   renderActions(view);
 
-  const hasDice = state.dice?.length === 2;
+  const dice = getActiveDice(state);
   const centerType = anim?.type;
 
   if (centerType === 'dice' && anim.values) {
     showDiceCenter(anim.values.map(() => '?'));
     await sleep(650);
-    showDiceResult(state.dice);
+    showDiceResult(dice || anim.values);
   } else if (centerType === 'build') {
     showBuildCenter(state, anim);
   } else if (centerType === 'chance') {
@@ -395,14 +465,17 @@ async function handleUpdate(view) {
     showBankCenter(anim.text || '銀行', anim.amount);
   } else if (centerType === 'jail') {
     showJailCenter(anim.text);
-  } else if (hasDice) {
-    showDiceResult(state.dice);
+  } else if (dice) {
+    showDiceResult(dice);
   }
 }
 
 window.bindMonopoly = function (socket, panels, showPanel) {
   mpSocket = socket; mpPanels = panels; mpShowPanel = showPanel;
-  socket.on('game:monopoly-update', (view) => handleUpdate(view));
+  socket.on('game:monopoly-update', (view) => {
+    window.mpIsHost = view.isHost;
+    handleUpdate(view);
+  });
   socket.on('game:monopoly-error', ({ message }) => {
     const fb = mp$('mpFeedback');
     if (fb) { fb.textContent = message; fb.classList.remove('hidden'); setTimeout(() => fb.classList.add('hidden'), 3000); }

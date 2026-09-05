@@ -2247,6 +2247,36 @@ button.mj-tile:not(.disabled):hover .mj-tile-body {
   font-size: 1.1rem; font-weight: 900;
 }
 .mp-dice-bar-sum { font-size: 0.85rem; color: #fbbf24; font-weight: 700; }
+
+/* 棋盤上方大骰子 */
+.mp-dice-hero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.65rem;
+  background: linear-gradient(135deg, rgba(251,191,36,.18), rgba(245,158,11,.08));
+  border: 2px solid rgba(251, 191, 36, 0.55);
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(251, 191, 36, 0.15);
+}
+.mp-dice-hero-label { font-size: 0.9rem; color: #fcd34d; font-weight: 700; }
+.mp-dice-hero-dice { display: flex; gap: 0.55rem; align-items: center; }
+.mp-dice-hero-die {
+  width: 3.25rem; height: 3.25rem; background: #fff; color: #0f172a;
+  border-radius: 12px; display: flex; align-items: center; justify-content: center;
+  font-size: 1.75rem; font-weight: 900;
+  box-shadow: 0 4px 12px rgba(0,0,0,.35);
+}
+.mp-dice-hero-sum { font-size: 1.35rem; color: #fbbf24; font-weight: 800; }
+.mp-dice-inline {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  padding: 0.65rem; margin-bottom: 0.5rem;
+  background: rgba(251,191,36,.12); border-radius: 10px;
+  font-size: 1rem; color: #fcd34d; font-weight: 700;
+}
+.mp-dice-inline .mp-die-show { width: 2.25rem; height: 2.25rem; font-size: 1.2rem; }
 .mp-bar { height: 7px; flex-shrink: 0; }
 .mp-cell-body {
   flex: 1;

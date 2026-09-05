@@ -1038,6 +1038,7 @@ def _emit_monopoly(room, code):
         return
     for p in room["players"]:
         view = mp.build_client_view(rnd, p["id"])
+        view["isHost"] = bool(p.get("isHost"))
         socketio.emit("game:monopoly-update", view, to=p["id"])
 
 
